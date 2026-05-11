@@ -7,9 +7,9 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'v0 App',
-  description: 'Created with v0',
-  generator: 'v0.app',
+  title: 'KrazyCarma | Professional Audio Mastering',
+  description: 'Professional audio mastering engine — EQ, compression, stereo widening, AI analysis, and export.',
+  generator: 'krazycarma',
   icons: {
     icon: [
       {
