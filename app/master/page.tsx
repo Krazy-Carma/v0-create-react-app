@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 
 const C = {
-  bg: '#05050d',
+  bg: 'transparent',
   surface: 'rgba(255,255,255,0.04)',
   border: 'rgba(255,255,255,0.08)',
   pink: '#ff1a8c',
@@ -445,7 +445,7 @@ export default function KrazyCarmaMaster() {
   };
 
   const s = {
-    wrap: { minHeight: '100vh', background: C.bg, color: C.text, fontFamily: "'IBM Plex Mono', monospace", padding: '20px', boxSizing: 'border-box' as const, backgroundImage: 'radial-gradient(ellipse at 20% 20%, rgba(0,229,255,0.04) 0%, transparent 50%), radial-gradient(ellipse at 80% 80%, rgba(255,26,140,0.04) 0%, transparent 50%)' },
+    wrap: { minHeight: '100vh', background: 'transparent', color: C.text, fontFamily: "'IBM Plex Mono', monospace", padding: '20px', boxSizing: 'border-box' as const, backgroundImage: 'radial-gradient(ellipse at 20% 20%, rgba(0,229,255,0.04) 0%, transparent 50%), radial-gradient(ellipse at 80% 80%, rgba(255,26,140,0.04) 0%, transparent 50%)' },
     header: { textAlign: 'center' as const, marginBottom: 24 },
     logo: { fontSize: 28, fontFamily: "'Orbitron', sans-serif", fontWeight: 900, letterSpacing: '0.15em', background: `linear-gradient(135deg, ${C.cyan}, ${C.pink}, ${C.lime})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' },
     sub: { fontSize: 10, color: C.muted, letterSpacing: '0.3em', marginTop: 4 },
