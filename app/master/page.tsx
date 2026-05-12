@@ -1,5 +1,5 @@
 "use client";
-
+export const dynamic = 'force-dynamic';
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 
