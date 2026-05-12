@@ -196,7 +196,7 @@ export default function KrazyCarmaMaster() {
 
   useEffect(() => {
     if (!cid) { setUsageLoaded(true); return; }
-    fetch()
+    fetch(`/api/check-usage?cid=${encodeURIComponent(cid)}`)
       .then(r => r.json())
       .then(d => {
         setIsSubscriber(d.isSubscriber ?? false);
@@ -338,23 +338,23 @@ export default function KrazyCarmaMaster() {
     if (!file) return;
     setAnalyzing(true);
     setAiAnalysis(null);
-    // Simulate AI analysis with preset recommendation
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    const genres = ['Electronic', 'Hip Hop', 'Pop', 'Rock', 'Ambient', 'Jazz'];
-    const presets = Object.keys(AI_PRESETS);
-    const randomGenre = genres[Math.floor(Math.random() * genres.length)];
-    const randomPreset = presets[Math.floor(Math.random() * presets.length)];
-    setAiAnalysis({
-      genre: randomGenre,
-      recommendedPreset: randomPreset,
-      eqTips: 'Consider a slight boost at 3kHz for presence and clarity.',
-      compTips: 'Use moderate compression (3-4:1) to maintain dynamics while adding punch.',
-      stereoTips: 'Widen the stereo image slightly for a more immersive mix.',
-      loudnessTips: 'Target -14 LUFS for streaming platforms like Spotify.',
-      summary: `Based on the track "${fileName}", we recommend the ${AI_PRESETS[randomPreset].name} preset for optimal results. This will enhance clarity while maintaining the natural dynamics of your mix.`
-    });
-    setActivePreset(randomPreset);
-    setAnalyzing(false);
+    try {
+      const res = await fetch('/api/ai-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName, fileType: file.type }),
+      });
+      if (!res.ok) throw new Error('Analysis failed');
+      const data: AIAnalysis & { recommendedPreset?: string } = await res.json();
+      setAiAnalysis(data);
+      if (data.recommendedPreset) setActivePreset(data.recommendedPreset);
+    } catch {
+      setAiAnalysis({
+        summary: 'Analysis unavailable. Please check your API key and try again.',
+      });
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   const exportMaster = async () => {
