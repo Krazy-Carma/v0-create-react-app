@@ -4,9 +4,9 @@ import { useState, useRef, useCallback } from "react";
 
 const C = {
   bg: 'transparent',
-  surface: 'rgba(255,255,255,0.04)',
-  border: 'rgba(255,255,255,0.08)',
-  pink: '#ff1a8c',
+  surface: 'linear-gradient(135deg, rgba(57,255,20,0.10), rgba(0,229,255,0.05))',
+  border: 'rgba(57,255,20,0.20)',
+  pink: '#39FF14',
   cyan: '#00e5ff',
   lime: '#b3ff00',
   orange: '#ff8000',
@@ -104,7 +104,7 @@ function Knob({ value, min, max, onChange, color = C.cyan, size = 56, label }: K
     window.addEventListener('mouseup', onUp);
   };
 
-  const colorRgb = color === C.cyan ? '0,229,255' : color === C.pink ? '255,26,140' : color === C.lime ? '179,255,0' : '170,68,255';
+  const colorRgb = color === C.cyan ? '0,229,255' : color === C.pink ? '57,255,20' : color === C.lime ? '179,255,0' : '170,68,255';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
@@ -455,8 +455,8 @@ export default function KrazyCarmaMaster() {
     dot: (color: string) => ({ width: 6, height: 6, borderRadius: '50%', background: color, boxShadow: `0 0 6px ${color}` }),
     dropzone: { border: `2px dashed ${file ? C.cyan : C.border}`, borderRadius: 10, padding: '28px 20px', textAlign: 'center' as const, cursor: 'pointer', transition: 'all 0.3s', background: file ? 'rgba(0,229,255,0.03)' : 'transparent' },
     tab: (active: boolean) => ({ padding: '7px 16px', borderRadius: 6, border: `1px solid ${active ? C.cyan : C.border}`, background: active ? 'rgba(0,229,255,0.08)' : 'transparent', color: active ? C.cyan : C.muted, fontSize: 10, letterSpacing: '0.15em', cursor: 'pointer', transition: 'all 0.2s' }),
-    preset: (active: boolean) => ({ padding: '6px 12px', borderRadius: 6, border: `1px solid ${active ? C.pink : C.border}`, background: active ? 'rgba(255,26,140,0.08)' : 'transparent', color: active ? C.pink : C.muted, fontSize: 9, letterSpacing: '0.1em', cursor: 'pointer', transition: 'all 0.2s', textTransform: 'uppercase' as const }),
-    playBtn: { width: 52, height: 52, borderRadius: '50%', border: `2px solid ${playing ? C.pink : C.cyan}`, background: playing ? 'rgba(255,26,140,0.1)' : 'rgba(0,229,255,0.1)', color: playing ? C.pink : C.cyan, fontSize: 20, cursor: file ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: file ? `0 0 20px ${playing ? C.pink : C.cyan}40` : 'none', transition: 'all 0.2s', opacity: file ? 1 : 0.4 },
+    preset: (active: boolean) => ({ padding: '6px 12px', borderRadius: 6, border: `1px solid ${active ? C.pink : C.border}`, background: active ? 'rgba(57,255,20,0.08)' : 'transparent', color: active ? C.pink : C.muted, fontSize: 9, letterSpacing: '0.1em', cursor: 'pointer', transition: 'all 0.2s', textTransform: 'uppercase' as const }),
+    playBtn: { width: 52, height: 52, borderRadius: '50%', border: `2px solid ${playing ? C.pink : C.cyan}`, background: playing ? 'rgba(57,255,20,0.1)' : 'rgba(0,229,255,0.1)', color: playing ? C.pink : C.cyan, fontSize: 20, cursor: file ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: file ? `0 0 20px ${playing ? C.pink : C.cyan}40` : 'none', transition: 'all 0.2s', opacity: file ? 1 : 0.4 },
   };
 
   const stats: [string, string][] = [
@@ -661,7 +661,7 @@ export default function KrazyCarmaMaster() {
             <button
               onClick={exportMaster}
               disabled={!file || exporting}
-              style={{ width: '100%', padding: '14px', background: file && !exporting ? `linear-gradient(135deg, rgba(0,229,255,0.08), rgba(255,26,140,0.08))` : 'rgba(255,255,255,0.02)', border: `1px solid ${file && !exporting ? C.cyan : C.border}`, borderRadius: 8, color: file && !exporting ? C.text : C.muted, fontFamily: "'Orbitron', sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: '0.15em', cursor: file && !exporting ? 'pointer' : 'not-allowed', boxShadow: file && !exporting ? `0 0 24px rgba(0,229,255,0.1)` : 'none', transition: 'all 0.3s' }}
+              style={{ width: '100%', padding: '14px', background: file && !exporting ? `linear-gradient(135deg, rgba(0,229,255,0.08), rgba(57,255,20,0.08))` : 'rgba(255,255,255,0.02)', border: `1px solid ${file && !exporting ? C.cyan : C.border}`, borderRadius: 8, color: file && !exporting ? C.text : C.muted, fontFamily: "'Orbitron', sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: '0.15em', cursor: file && !exporting ? 'pointer' : 'not-allowed', boxShadow: file && !exporting ? `0 0 24px rgba(0,229,255,0.1)` : 'none', transition: 'all 0.3s' }}
             >
               {exporting ? '⏳ RENDERING...' : expProg === 100 ? '✓ EXPORTED!' : '↓ EXPORT MASTER'}
             </button>
