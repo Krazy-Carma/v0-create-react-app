@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 
 const C = {
   bg: 'transparent',
@@ -186,6 +187,25 @@ export default function KrazyCarmaMaster() {
   const [analyzing, setAnalyzing] = useState(false);
   const [activePreset, setActivePreset] = useState<string | null>(null);
   const [tab, setTab] = useState('eq');
+  const [usesLeft, setUsesLeft] = useState<number | null>(null);
+  const [isSubscriber, setIsSubscriber] = useState(false);
+  const [usageLoaded, setUsageLoaded] = useState(false);
+  const [outOfUses, setOutOfUses] = useState(false);
+  const params = useSearchParams();
+  const cid = params.get('cid');
+
+  useEffect(() => {
+    if (!cid) { setUsageLoaded(true); return; }
+    fetch()
+      .then(r => r.json())
+      .then(d => {
+        setIsSubscriber(d.isSubscriber ?? false);
+        setUsesLeft(d.usesLeft ?? 0);
+        setOutOfUses(!d.canUse);
+        setUsageLoaded(true);
+      })
+      .catch(() => setUsageLoaded(true));
+  }, [cid]);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
@@ -339,6 +359,17 @@ export default function KrazyCarmaMaster() {
 
   const exportMaster = async () => {
     if (!file || exporting) return;
+    if (outOfUses) return;
+    // Record the use before exporting
+    if (cid && !isSubscriber && usesLeft !== null) {
+      const res = await fetch('/api/record-use', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cid, usesLeft }),
+      }).then(r => r.json()).catch(() => null);
+      if (res?.ok) setUsesLeft(res.usesLeft);
+      if (res?.usesLeft === 0) setOutOfUses(true);
+    }
     setExporting(true);
     setExpProg(0);
 
@@ -475,7 +506,27 @@ export default function KrazyCarmaMaster() {
       <div style={s.header}>
         <div style={s.logo}>KRAZYCARMA</div>
         <div style={s.sub}>PROFESSIONAL AUDIO MASTERING ENGINE</div>
+        {usageLoaded && !isSubscriber && usesLeft !== null && (
+          <div style={{ marginTop: 10, display: 'inline-block', padding: '4px 14px', borderRadius: 20, border: `1px solid ${usesLeft > 0 ? C.pink : 'rgba(255,80,80,0.5)'}`, color: usesLeft > 0 ? C.pink : '#ff5050', fontSize: 10, letterSpacing: '0.15em', background: usesLeft > 0 ? 'rgba(57,255,20,0.06)' : 'rgba(255,80,80,0.08)' }}>
+            {usesLeft > 0 ? `${usesLeft} FREE USE${usesLeft === 1 ? '' : 'S'} REMAINING THIS MONTH` : 'NO FREE USES LEFT — UPGRADE TO PRO'}
+          </div>
+        )}
+        {usageLoaded && isSubscriber && (
+          <div style={{ marginTop: 10, display: 'inline-block', padding: '4px 14px', borderRadius: 20, border: `1px solid ${C.cyan}`, color: C.cyan, fontSize: 10, letterSpacing: '0.15em', background: 'rgba(0,229,255,0.06)' }}>
+            PRO — UNLIMITED ACCESS
+          </div>
+        )}
       </div>
+
+      {outOfUses && (
+        <div style={{ maxWidth: 900, margin: '0 auto 20px', padding: 24, borderRadius: 12, border: '1px solid rgba(255,80,80,0.4)', background: 'rgba(255,80,80,0.06)', textAlign: 'center' }}>
+          <div style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 16, color: '#ff5050', marginBottom: 10, letterSpacing: '0.15em' }}>YOU HAVE USED ALL 3 FREE EXPORTS THIS MONTH</div>
+          <div style={{ color: C.muted, fontSize: 12, marginBottom: 18 }}>Upgrade to AKP Pro for unlimited mastering. Resets on the 1st of each month.</div>
+          <a href="/pages/pro-mastering-upgrade" style={{ padding: '12px 32px', fontFamily: "'Orbitron', sans-serif", fontWeight: 900, fontSize: 12, letterSpacing: '0.15em', textDecoration: 'none', borderRadius: 6, border: `1px solid ${C.pink}`, color: C.pink, background: 'rgba(57,255,20,0.08)', boxShadow: `0 0 20px ${C.pink}40` }}>
+            UPGRADE TO PRO
+          </a>
+        </div>
+      )}
 
       <div style={s.grid}>
         {/* LEFT COLUMN */}
@@ -660,7 +711,7 @@ export default function KrazyCarmaMaster() {
             )}
             <button
               onClick={exportMaster}
-              disabled={!file || exporting}
+              disabled={!file || exporting || outOfUses}
               style={{ width: '100%', padding: '14px', background: file && !exporting ? `linear-gradient(135deg, rgba(0,229,255,0.08), rgba(57,255,20,0.08))` : 'rgba(255,255,255,0.02)', border: `1px solid ${file && !exporting ? C.cyan : C.border}`, borderRadius: 8, color: file && !exporting ? C.text : C.muted, fontFamily: "'Orbitron', sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: '0.15em', cursor: file && !exporting ? 'pointer' : 'not-allowed', boxShadow: file && !exporting ? `0 0 24px rgba(0,229,255,0.1)` : 'none', transition: 'all 0.3s' }}
             >
               {exporting ? '⏳ RENDERING...' : expProg === 100 ? '✓ EXPORTED!' : '↓ EXPORT MASTER'}
