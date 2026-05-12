@@ -1,6 +1,6 @@
 "use client";
 export const dynamic = 'force-dynamic';
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 const C = {
@@ -171,7 +171,7 @@ interface AIAnalysis {
   recommendedPreset?: string;
 }
 
-export default function KrazyCarmaMaster() {
+function KrazyCarmaMasterInner() {
   const [file, setFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState('');
   const [playing, setPlaying] = useState(false);
@@ -736,5 +736,12 @@ export default function KrazyCarmaMaster() {
         </div>
       </div>
     </div>
+  );
+}
+export default function KrazyCarmaMaster() {
+  return (
+    <Suspense fallback={null}>
+      <KrazyCarmaMasterInner />
+    </Suspense>
   );
 }
