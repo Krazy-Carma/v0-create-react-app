@@ -14,7 +14,7 @@ const C = {
   purple: '#aa44ff',
   text: '#eff0ff',
   muted: 'rgba(220,222,255,0.5)',
-  dim: 'rgba(220,222,255,0.18)',
+  dim: 'rgba(220,222,255,0.40)',
 };
 
 interface EqBand {
@@ -88,15 +88,17 @@ function Knob({ value, min, max, onChange, color = C.cyan, size = 56, label }: K
   const pct = (value - min) / (max - min);
   const angle = -135 + pct * 270;
 
+  const applyDrag = (clientY: number) => {
+    const dy = startY.current! - clientY;
+    const range = max - min;
+    const newVal = Math.min(max, Math.max(min, startVal.current! + (dy / 100) * range));
+    onChange(newVal);
+  };
+
   const onMouseDown = (e: React.MouseEvent) => {
     startY.current = e.clientY;
     startVal.current = value;
-    const onMove = (ev: MouseEvent) => {
-      const dy = startY.current! - ev.clientY;
-      const range = max - min;
-      const newVal = Math.min(max, Math.max(min, startVal.current! + (dy / 100) * range));
-      onChange(newVal);
-    };
+    const onMove = (ev: MouseEvent) => applyDrag(ev.clientY);
     const onUp = () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
@@ -105,11 +107,24 @@ function Knob({ value, min, max, onChange, color = C.cyan, size = 56, label }: K
     window.addEventListener('mouseup', onUp);
   };
 
+  const onTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault();
+    startY.current = e.touches[0].clientY;
+    startVal.current = value;
+    const onMove = (ev: TouchEvent) => { ev.preventDefault(); applyDrag(ev.touches[0].clientY); };
+    const onEnd = () => {
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onEnd);
+    };
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onEnd);
+  };
+
   const colorRgb = color === C.cyan ? '0,229,255' : color === C.pink ? '57,255,20' : color === C.lime ? '179,255,0' : '170,68,255';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-      <svg width={size} height={size} viewBox="0 0 56 56" style={{ cursor: 'ns-resize', userSelect: 'none' }} onMouseDown={onMouseDown}>
+      <svg width={size} height={size} viewBox="0 0 56 56" style={{ cursor: 'ns-resize', userSelect: 'none', touchAction: 'none' }} onMouseDown={onMouseDown} onTouchStart={onTouchStart}>
         <circle cx="28" cy="28" r="24" fill="rgba(0,0,0,0.5)" stroke="rgba(255,255,255,0.08)" strokeWidth="1.5" />
         <circle cx="28" cy="28" r="20" fill={`rgba(${colorRgb},0.07)`} />
         <path d={describeArc(28,28,18,-135,135)} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="2.5" strokeLinecap="round"/>
@@ -123,7 +138,7 @@ function Knob({ value, min, max, onChange, color = C.cyan, size = 56, label }: K
         />
         <circle cx="28" cy="28" r="3" fill={color} style={{ filter: `drop-shadow(0 0 4px ${color})` }}/>
       </svg>
-      {label && <span style={{ fontSize: 9, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'monospace' }}>{label}</span>}
+      {label && <span style={{ fontSize: 11, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'monospace' }}>{label}</span>}
     </div>
   );
 }
@@ -156,7 +171,7 @@ function VUMeter({ level, color = C.cyan, width = 16, height = 80, label }: VUMe
           );
         })}
       </div>
-      {label && <span style={{ fontSize: 9, color: C.muted, fontFamily: 'monospace' }}>{label}</span>}
+      {label && <span style={{ fontSize: 11, color: C.muted, fontFamily: 'monospace' }}>{label}</span>}
     </div>
   );
 }
@@ -196,7 +211,7 @@ function KrazyCarmaMasterInner() {
 
   useEffect(() => {
     if (!cid) { setUsageLoaded(true); return; }
-    fetch()
+    fetch(`/api/check-use?cid=${cid}`)
       .then(r => r.json())
       .then(d => {
         setIsSubscriber(d.isSubscriber ?? false);
@@ -476,17 +491,17 @@ function KrazyCarmaMasterInner() {
   };
 
   const s = {
-    wrap: { minHeight: '100vh', background: 'transparent', color: C.text, fontFamily: "'IBM Plex Mono', monospace", padding: '20px', boxSizing: 'border-box' as const, backgroundImage: 'radial-gradient(ellipse at 20% 20%, rgba(0,229,255,0.04) 0%, transparent 50%), radial-gradient(ellipse at 80% 80%, rgba(255,26,140,0.04) 0%, transparent 50%)' },
+    wrap: { minHeight: '100vh', background: '#0a0a0f', color: C.text, fontFamily: "'IBM Plex Mono', monospace", padding: '20px', boxSizing: 'border-box' as const, backgroundImage: 'radial-gradient(ellipse at 20% 20%, rgba(0,229,255,0.06) 0%, transparent 50%), radial-gradient(ellipse at 80% 80%, rgba(57,255,20,0.04) 0%, transparent 50%)' },
     header: { textAlign: 'center' as const, marginBottom: 24 },
     logo: { fontSize: 28, fontFamily: "'Orbitron', sans-serif", fontWeight: 900, letterSpacing: '0.15em', background: `linear-gradient(135deg, ${C.cyan}, ${C.pink}, ${C.lime})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' },
     sub: { fontSize: 10, color: C.muted, letterSpacing: '0.3em', marginTop: 4 },
     grid: { display: 'grid', gridTemplateColumns: '1fr 240px', gap: 16, maxWidth: 900, margin: '0 auto' },
     panel: { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20 },
-    sectionTitle: { fontSize: 10, color: C.muted, letterSpacing: '0.25em', textTransform: 'uppercase' as const, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 },
+    sectionTitle: { fontSize: 11, color: C.muted, letterSpacing: '0.25em', textTransform: 'uppercase' as const, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 },
     dot: (color: string) => ({ width: 6, height: 6, borderRadius: '50%', background: color, boxShadow: `0 0 6px ${color}` }),
-    dropzone: { border: `2px dashed ${file ? C.cyan : C.border}`, borderRadius: 10, padding: '28px 20px', textAlign: 'center' as const, cursor: 'pointer', transition: 'all 0.3s', background: file ? 'rgba(0,229,255,0.03)' : 'transparent' },
-    tab: (active: boolean) => ({ padding: '7px 16px', borderRadius: 6, border: `1px solid ${active ? C.cyan : C.border}`, background: active ? 'rgba(0,229,255,0.08)' : 'transparent', color: active ? C.cyan : C.muted, fontSize: 10, letterSpacing: '0.15em', cursor: 'pointer', transition: 'all 0.2s' }),
-    preset: (active: boolean) => ({ padding: '6px 12px', borderRadius: 6, border: `1px solid ${active ? C.pink : C.border}`, background: active ? 'rgba(57,255,20,0.08)' : 'transparent', color: active ? C.pink : C.muted, fontSize: 9, letterSpacing: '0.1em', cursor: 'pointer', transition: 'all 0.2s', textTransform: 'uppercase' as const }),
+    dropzone: { border: `2px dashed ${file ? C.cyan : C.border}`, borderRadius: 10, padding: '28px 20px', textAlign: 'center' as const, cursor: 'pointer', transition: 'all 0.3s', background: file ? 'rgba(0,229,255,0.05)' : 'rgba(255,255,255,0.01)' },
+    tab: (active: boolean) => ({ padding: '7px 16px', borderRadius: 6, border: `1px solid ${active ? C.cyan : C.border}`, background: active ? 'rgba(0,229,255,0.08)' : 'transparent', color: active ? C.cyan : C.muted, fontSize: 11, letterSpacing: '0.15em', cursor: 'pointer', transition: 'all 0.2s' }),
+    preset: (active: boolean) => ({ padding: '6px 12px', borderRadius: 6, border: `1px solid ${active ? C.pink : C.border}`, background: active ? 'rgba(57,255,20,0.08)' : 'transparent', color: active ? C.pink : C.muted, fontSize: 10, letterSpacing: '0.1em', cursor: 'pointer', transition: 'all 0.2s', textTransform: 'uppercase' as const }),
     playBtn: { width: 52, height: 52, borderRadius: '50%', border: `2px solid ${playing ? C.pink : C.cyan}`, background: playing ? 'rgba(57,255,20,0.1)' : 'rgba(0,229,255,0.1)', color: playing ? C.pink : C.cyan, fontSize: 20, cursor: file ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: file ? `0 0 20px ${playing ? C.pink : C.cyan}40` : 'none', transition: 'all 0.2s', opacity: file ? 1 : 0.4 },
   };
 
@@ -501,7 +516,7 @@ function KrazyCarmaMasterInner() {
 
   return (
     <div style={s.wrap}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=IBM+Plex+Mono:wght@300;400;500&display=swap'); * { box-sizing: border-box; } input[type=range] { -webkit-appearance: none; width: 100%; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.08); outline: none; } input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: ${C.cyan}; box-shadow: 0 0 8px ${C.cyan}80; cursor: ns-resize; }`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=IBM+Plex+Mono:wght@300;400;500&display=swap'); * { box-sizing: border-box; } input[type=range] { -webkit-appearance: none; width: 100%; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.08); outline: none; } input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: ${C.cyan}; box-shadow: 0 0 8px ${C.cyan}80; cursor: ns-resize; } @media (max-width: 700px) { .kc-grid { grid-template-columns: 1fr !important; } .kc-knob-row { flex-wrap: wrap; justify-content: space-evenly !important; } }`}</style>
 
       <div style={s.header}>
         <div style={s.logo}>KRAZYCARMA</div>
@@ -528,7 +543,7 @@ function KrazyCarmaMasterInner() {
         </div>
       )}
 
-      <div style={s.grid}>
+      <div style={s.grid} className="kc-grid">
         {/* LEFT COLUMN */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
@@ -593,8 +608,8 @@ function KrazyCarmaMasterInner() {
                   <span style={{ fontSize: 10, color: C.text }}>{aiAnalysis.genre}</span>
                 </div>
                 <div style={{ fontSize: 10, color: C.muted, lineHeight: 1.7 }}>{aiAnalysis.summary}</div>
-                {aiAnalysis.eqTips && <div style={{ marginTop: 8, fontSize: 9, color: C.dim }}>EQ: {aiAnalysis.eqTips}</div>}
-                {aiAnalysis.compTips && <div style={{ marginTop: 4, fontSize: 9, color: C.dim }}>COMP: {aiAnalysis.compTips}</div>}
+                {aiAnalysis.eqTips && <div style={{ marginTop: 8, fontSize: 11, color: C.dim }}>EQ: {aiAnalysis.eqTips}</div>}
+                {aiAnalysis.compTips && <div style={{ marginTop: 4, fontSize: 11, color: C.dim }}>COMP: {aiAnalysis.compTips}</div>}
                 {aiAnalysis.recommendedPreset && (
                   <button style={{ ...s.preset(true), marginTop: 10, width: '100%' }} onClick={() => applyPreset(aiAnalysis.recommendedPreset!)}>
                     {'✦'} APPLY RECOMMENDED: {AI_PRESETS[aiAnalysis.recommendedPreset]?.name}
@@ -615,12 +630,12 @@ function KrazyCarmaMasterInner() {
             {tab === 'eq' && (
               <div>
                 <div style={s.sectionTitle}><span style={s.dot(C.cyan)} />6-BAND PARAMETRIC EQ</div>
-                <div style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 16 }}>
+                <div className="kc-knob-row" style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 16 }}>
                   {eqBands.map((b, i) => (
                     <div key={b.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
                       <Knob value={b.gain} min={-12} max={12} onChange={v => updateEq(i, Math.round(v * 10) / 10)} color={[C.cyan, C.cyan, C.lime, C.lime, C.pink, C.pink][i]} size={52} />
-                      <div style={{ fontSize: 9, color: C.muted }}>{b.label}</div>
-                      <div style={{ fontSize: 9, color: C.text, fontFamily: 'monospace' }}>{b.gain > 0 ? '+' : ''}{b.gain.toFixed(1)}dB</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>{b.label}</div>
+                      <div style={{ fontSize: 11, color: C.text, fontFamily: 'monospace' }}>{b.gain > 0 ? '+' : ''}{b.gain.toFixed(1)}dB</div>
                     </div>
                   ))}
                 </div>
@@ -630,31 +645,31 @@ function KrazyCarmaMasterInner() {
             {tab === 'comp' && (
               <div>
                 <div style={s.sectionTitle}><span style={s.dot(C.orange)} />DYNAMICS COMPRESSOR</div>
-                <div style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 16 }}>
+                <div className="kc-knob-row" style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 16 }}>
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
                     <Knob value={comp.threshold} min={-40} max={0} onChange={v => updateComp('threshold', Math.round(v))} color={C.orange} size={52}/>
-                    <div style={{fontSize:9,color:C.muted}}>THRESHOLD</div>
-                    <div style={{fontSize:9,color:C.text,fontFamily:'monospace'}}>{comp.threshold}dB</div>
+                    <div style={{fontSize:11,color:C.muted}}>THRESHOLD</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>{comp.threshold}dB</div>
                   </div>
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
                     <Knob value={comp.ratio} min={1} max={20} onChange={v => updateComp('ratio', Math.round(v * 2) / 2)} color={C.orange} size={52}/>
-                    <div style={{fontSize:9,color:C.muted}}>RATIO</div>
-                    <div style={{fontSize:9,color:C.text,fontFamily:'monospace'}}>{comp.ratio}:1</div>
+                    <div style={{fontSize:11,color:C.muted}}>RATIO</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>{comp.ratio}:1</div>
                   </div>
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
                     <Knob value={comp.attack} min={1} max={100} onChange={v => updateComp('attack', Math.round(v))} color={C.lime} size={52}/>
-                    <div style={{fontSize:9,color:C.muted}}>ATTACK</div>
-                    <div style={{fontSize:9,color:C.text,fontFamily:'monospace'}}>{comp.attack}ms</div>
+                    <div style={{fontSize:11,color:C.muted}}>ATTACK</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>{comp.attack}ms</div>
                   </div>
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
                     <Knob value={comp.release} min={10} max={500} onChange={v => updateComp('release', Math.round(v))} color={C.lime} size={52}/>
-                    <div style={{fontSize:9,color:C.muted}}>RELEASE</div>
-                    <div style={{fontSize:9,color:C.text,fontFamily:'monospace'}}>{comp.release}ms</div>
+                    <div style={{fontSize:11,color:C.muted}}>RELEASE</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>{comp.release}ms</div>
                   </div>
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
                     <Knob value={comp.makeup} min={0} max={12} onChange={v => updateComp('makeup', Math.round(v * 2) / 2)} color={C.pink} size={52}/>
-                    <div style={{fontSize:9,color:C.muted}}>MAKEUP</div>
-                    <div style={{fontSize:9,color:C.text,fontFamily:'monospace'}}>+{comp.makeup}dB</div>
+                    <div style={{fontSize:11,color:C.muted}}>MAKEUP</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>+{comp.makeup}dB</div>
                   </div>
                 </div>
               </div>
@@ -663,17 +678,17 @@ function KrazyCarmaMasterInner() {
             {tab === 'stereo' && (
               <div>
                 <div style={s.sectionTitle}><span style={s.dot(C.purple)} />STEREO & LOUDNESS</div>
-                <div style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 24 }}>
+                <div className="kc-knob-row" style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 24 }}>
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
                     <Knob value={stereoWidth} min={0} max={100} onChange={v => setStereoWidth(Math.round(v))} color={C.purple} size={60}/>
-                    <div style={{fontSize:9,color:C.muted}}>STEREO WIDTH</div>
-                    <div style={{fontSize:9,color:C.text,fontFamily:'monospace'}}>+{stereoWidth}%</div>
+                    <div style={{fontSize:11,color:C.muted}}>STEREO WIDTH</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>+{stereoWidth}%</div>
                   </div>
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
                     <Knob value={targetLufs} min={-23} max={-6} onChange={v => setTargetLufs(Math.round(v))} color={C.lime} size={60}/>
-                    <div style={{fontSize:9,color:C.muted}}>TARGET LUFS</div>
-                    <div style={{fontSize:9,color:C.text,fontFamily:'monospace'}}>{targetLufs} LUFS</div>
-                    <div style={{fontSize:8,color:C.dim,textAlign:'center'}}>Streaming: -14<br/>Club: -9</div>
+                    <div style={{fontSize:11,color:C.muted}}>TARGET LUFS</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>{targetLufs} LUFS</div>
+                    <div style={{fontSize:10,color:C.dim,textAlign:'center'}}>Streaming: -14<br/>Club: -9</div>
                   </div>
                 </div>
               </div>
@@ -689,8 +704,8 @@ function KrazyCarmaMasterInner() {
             <div style={s.sectionTitle}><span style={s.dot(C.lime)} />PARAMETERS</div>
             {stats.map(([l, v]) => (
               <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid rgba(255,255,255,0.04)` }}>
-                <span style={{ fontSize: 9, color: C.muted }}>{l}</span>
-                <span style={{ fontSize: 9, color: C.text, fontFamily: 'monospace' }}>{v}</span>
+                <span style={{ fontSize: 11, color: C.muted }}>{l}</span>
+                <span style={{ fontSize: 11, color: C.text, fontFamily: 'monospace' }}>{v}</span>
               </div>
             ))}
           </div>
@@ -701,8 +716,8 @@ function KrazyCarmaMasterInner() {
             {exporting && (
               <div style={{ marginBottom: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span style={{ fontSize: 9, color: C.muted }}>Rendering...</span>
-                  <span style={{ fontSize: 9, color: C.cyan, fontFamily: 'monospace' }}>{expProg}%</span>
+                  <span style={{ fontSize: 11, color: C.muted }}>Rendering...</span>
+                  <span style={{ fontSize: 11, color: C.cyan, fontFamily: 'monospace' }}>{expProg}%</span>
                 </div>
                 <div style={{ height: 5, background: 'rgba(255,255,255,0.05)', borderRadius: 3, overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${expProg}%`, background: `linear-gradient(90deg, ${C.cyan}, ${C.pink}, ${C.lime})`, transition: 'width 0.3s', borderRadius: 3 }} />
@@ -716,7 +731,7 @@ function KrazyCarmaMasterInner() {
             >
               {exporting ? '⏳ RENDERING...' : expProg === 100 ? '✓ EXPORTED!' : '↓ EXPORT MASTER'}
             </button>
-            <p style={{ marginTop: 10, fontSize: 8, color: C.dim, textAlign: 'center', lineHeight: 1.7 }}>
+            <p style={{ marginTop: 10, fontSize: 10, color: C.dim, textAlign: 'center', lineHeight: 1.7 }}>
               {'Offline render · Full chain · 16-bit WAV'}
             </p>
           </div>
@@ -724,7 +739,7 @@ function KrazyCarmaMasterInner() {
           {/* Tips */}
           <div style={{ ...s.panel, background: 'rgba(179,255,0,0.02)', border: `1px solid rgba(179,255,0,0.1)` }}>
             <div style={s.sectionTitle}><span style={s.dot(C.lime)} />QUICK TIPS</div>
-            <div style={{ fontSize: 9, color: C.muted, lineHeight: 1.9 }}>
+            <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.9 }}>
               <div>{'•'} Streaming targets -14 LUFS</div>
               <div>{'•'} Club masters peak -9 LUFS</div>
               <div>{'•'} Boost 60Hz for warmth</div>
