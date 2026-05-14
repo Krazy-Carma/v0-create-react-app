@@ -14,7 +14,7 @@ const C = {
   purple: '#aa44ff',
   text: '#eff0ff',
   muted: 'rgba(220,222,255,0.5)',
-  dim: 'rgba(220,222,255,0.18)',
+  dim: 'rgba(220,222,255,0.40)',
 };
 
 interface EqBand {
@@ -88,15 +88,17 @@ function Knob({ value, min, max, onChange, color = C.cyan, size = 56, label }: K
   const pct = (value - min) / (max - min);
   const angle = -135 + pct * 270;
 
+  const applyDrag = (clientY: number) => {
+    const dy = startY.current! - clientY;
+    const range = max - min;
+    const newVal = Math.min(max, Math.max(min, startVal.current! + (dy / 100) * range));
+    onChange(newVal);
+  };
+
   const onMouseDown = (e: React.MouseEvent) => {
     startY.current = e.clientY;
     startVal.current = value;
-    const onMove = (ev: MouseEvent) => {
-      const dy = startY.current! - ev.clientY;
-      const range = max - min;
-      const newVal = Math.min(max, Math.max(min, startVal.current! + (dy / 100) * range));
-      onChange(newVal);
-    };
+    const onMove = (ev: MouseEvent) => applyDrag(ev.clientY);
     const onUp = () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
@@ -105,11 +107,24 @@ function Knob({ value, min, max, onChange, color = C.cyan, size = 56, label }: K
     window.addEventListener('mouseup', onUp);
   };
 
+  const onTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault();
+    startY.current = e.touches[0].clientY;
+    startVal.current = value;
+    const onMove = (ev: TouchEvent) => { ev.preventDefault(); applyDrag(ev.touches[0].clientY); };
+    const onEnd = () => {
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onEnd);
+    };
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onEnd);
+  };
+
   const colorRgb = color === C.cyan ? '0,229,255' : color === C.pink ? '57,255,20' : color === C.lime ? '179,255,0' : '170,68,255';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-      <svg width={size} height={size} viewBox="0 0 56 56" style={{ cursor: 'ns-resize', userSelect: 'none' }} onMouseDown={onMouseDown}>
+      <svg width={size} height={size} viewBox="0 0 56 56" style={{ cursor: 'ns-resize', userSelect: 'none', touchAction: 'none' }} onMouseDown={onMouseDown} onTouchStart={onTouchStart}>
         <circle cx="28" cy="28" r="24" fill="rgba(0,0,0,0.5)" stroke="rgba(255,255,255,0.08)" strokeWidth="1.5" />
         <circle cx="28" cy="28" r="20" fill={`rgba(${colorRgb},0.07)`} />
         <path d={describeArc(28,28,18,-135,135)} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="2.5" strokeLinecap="round"/>
@@ -123,7 +138,7 @@ function Knob({ value, min, max, onChange, color = C.cyan, size = 56, label }: K
         />
         <circle cx="28" cy="28" r="3" fill={color} style={{ filter: `drop-shadow(0 0 4px ${color})` }}/>
       </svg>
-      {label && <span style={{ fontSize: 9, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'monospace' }}>{label}</span>}
+      {label && <span style={{ fontSize: 11, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'monospace' }}>{label}</span>}
     </div>
   );
 }
@@ -156,7 +171,7 @@ function VUMeter({ level, color = C.cyan, width = 16, height = 80, label }: VUMe
           );
         })}
       </div>
-      {label && <span style={{ fontSize: 9, color: C.muted, fontFamily: 'monospace' }}>{label}</span>}
+      {label && <span style={{ fontSize: 11, color: C.muted, fontFamily: 'monospace' }}>{label}</span>}
     </div>
   );
 }
@@ -174,7 +189,9 @@ interface AIAnalysis {
 function KrazyCarmaMasterInner() {
   const [file, setFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState('');
+  const [uploadError, setUploadError] = useState('');
   const [playing, setPlaying] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [eqBands, setEqBands] = useState<EqBand[]>(EQ_BANDS.map(b => ({ ...b })));
   const [comp, setComp] = useState<CompSettings>({ threshold: -18, ratio: 3, attack: 10, release: 100, makeup: 0 });
   const [stereoWidth, setStereoWidth] = useState(20);
@@ -187,6 +204,12 @@ function KrazyCarmaMasterInner() {
   const [analyzing, setAnalyzing] = useState(false);
   const [activePreset, setActivePreset] = useState<string | null>(null);
   const [tab, setTab] = useState('eq');
+  const [limiterThreshold, setLimiterThreshold] = useState(-1);
+  const [limiterRelease, setLimiterRelease] = useState(50);
+  const [satDrive, setSatDrive] = useState(0);
+  const [satMix, setSatMix] = useState(50);
+  const specCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const specAnimRef = useRef<number>(0);
   const [usesLeft, setUsesLeft] = useState<number | null>(null);
   const [isSubscriber, setIsSubscriber] = useState(false);
   const [usageLoaded, setUsageLoaded] = useState(false);
@@ -196,7 +219,7 @@ function KrazyCarmaMasterInner() {
 
   useEffect(() => {
     if (!cid) { setUsageLoaded(true); return; }
-    fetch()
+    fetch(`/api/check-use?cid=${cid}`)
       .then(r => r.json())
       .then(d => {
         setIsSubscriber(d.isSubscriber ?? false);
@@ -217,6 +240,11 @@ function KrazyCarmaMasterInner() {
   const analyserRRef = useRef<AnalyserNode | null>(null);
   const animRef = useRef<number>(0);
   const gainNodeRef = useRef<GainNode | null>(null);
+  const limiterRef = useRef<DynamicsCompressorNode | null>(null);
+  const satWaveShaperRef = useRef<WaveShaperNode | null>(null);
+  const satGainRef = useRef<GainNode | null>(null);
+  const satDryRef = useRef<GainNode | null>(null);
+  const specAnalyserRef = useRef<AnalyserNode | null>(null);
 
   const initAudio = useCallback(async (arrayBuf: ArrayBuffer) => {
     if (audioCtxRef.current) audioCtxRef.current.close();
@@ -256,22 +284,62 @@ function KrazyCarmaMasterInner() {
     gainNode.gain.value = Math.pow(10, comp.makeup / 20);
     gainNodeRef.current = gainNode;
 
+    // Saturation (waveshaper with dry/wet mix)
+    const curve = new Float32Array(256);
+    for (let i = 0; i < 256; i++) {
+      const x = (i * 2) / 256 - 1;
+      const k = satDrive * 2;
+      curve[i] = k > 0 ? ((3 + k) * x * 20) / (Math.PI + k * Math.abs(x)) : x;
+    }
+    const satWS = ctx.createWaveShaper(); satWS.curve = curve; satWS.oversample = '4x'; satWaveShaperRef.current = satWS;
+    const satWet = ctx.createGain(); satWet.gain.value = satMix / 100; satGainRef.current = satWet;
+    const satDry = ctx.createGain(); satDry.gain.value = 1 - satMix / 100; satDryRef.current = satDry;
+
+    // Limiter (brick-wall)
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = limiterThreshold;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.001;
+    limiter.release.value = limiterRelease / 1000;
+    limiterRef.current = limiter;
+
+    // Spectrum analyser (for visualisation)
+    const specAnalyser = ctx.createAnalyser();
+    specAnalyser.fftSize = 2048;
+    specAnalyserRef.current = specAnalyser;
+
     merger.connect(eqChain[0]);
     eqChain[eqChain.length - 1].connect(compNode);
     compNode.connect(gainNode);
-    gainNode.connect(ctx.destination);
+    // Saturation parallel dry/wet
+    gainNode.connect(satDry);
+    gainNode.connect(satWS);
+    satWS.connect(satWet);
+    satDry.connect(limiter);
+    satWet.connect(limiter);
+    limiter.connect(specAnalyser);
+    specAnalyser.connect(ctx.destination);
 
     return { ctx, splitter, decoded };
-  }, [comp.attack, comp.makeup, comp.ratio, comp.release, comp.threshold, eqBands]);
+  }, [comp.attack, comp.makeup, comp.ratio, comp.release, comp.threshold, eqBands, satDrive, satMix, limiterThreshold, limiterRelease]);
 
   const loadFile = async (f: File) => {
-    setFile(f);
-    setFileName(f.name);
-    setPlaying(false);
-    setExpProg(0);
-    setAiAnalysis(null);
-    const ab = await f.arrayBuffer();
-    await initAudio(ab.slice(0));
+    setUploadError('');
+    try {
+      setFile(f);
+      setFileName(f.name);
+      setPlaying(false);
+      setExpProg(0);
+      setAiAnalysis(null);
+      const ab = await f.arrayBuffer();
+      await initAudio(ab.slice(0));
+    } catch (err) {
+      setFile(null);
+      setFileName('');
+      const msg = err instanceof Error ? err.message : String(err);
+      setUploadError(`Could not load audio: ${msg}. Try a WAV or MP3 file.`);
+    }
   };
 
   const onDrop = (e: React.DragEvent) => {
@@ -404,10 +472,34 @@ function KrazyCarmaMasterInner() {
     const lufsGain = Math.pow(10, ((targetLufs - (-14)) / 20));
     gain.gain.value = lufsGain * Math.pow(10, comp.makeup / 20);
 
+    // Saturation
+    const satCurve = new Float32Array(256);
+    for (let i = 0; i < 256; i++) {
+      const x = (i * 2) / 256 - 1;
+      const k = satDrive * 2;
+      satCurve[i] = k > 0 ? ((3 + k) * x * 20) / (Math.PI + k * Math.abs(x)) : x;
+    }
+    const satWS = fullCtx.createWaveShaper(); satWS.curve = satCurve; satWS.oversample = '4x';
+    const satWet = fullCtx.createGain(); satWet.gain.value = satMix / 100;
+    const satDryG = fullCtx.createGain(); satDryG.gain.value = 1 - satMix / 100;
+
+    // Limiter
+    const limiter = fullCtx.createDynamicsCompressor();
+    limiter.threshold.value = limiterThreshold;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.001;
+    limiter.release.value = limiterRelease / 1000;
+
     merger.connect(eq[0]);
     eq[eq.length-1].connect(compressor);
     compressor.connect(gain);
-    gain.connect(fullCtx.destination);
+    gain.connect(satDryG);
+    gain.connect(satWS);
+    satWS.connect(satWet);
+    satDryG.connect(limiter);
+    satWet.connect(limiter);
+    limiter.connect(fullCtx.destination);
     src.start(0);
 
     const progInterval = setInterval(() => setExpProg(p => Math.min(p + 3, 90)), 100);
@@ -475,19 +567,70 @@ function KrazyCarmaMasterInner() {
     if (key === 'makeup' && gainNodeRef.current) gainNodeRef.current.gain.value = Math.pow(10, val / 20);
   };
 
+  const updateLimiter = (key: 'threshold' | 'release', val: number) => {
+    if (key === 'threshold') { setLimiterThreshold(val); if (limiterRef.current) limiterRef.current.threshold.value = val; }
+    if (key === 'release') { setLimiterRelease(val); if (limiterRef.current) limiterRef.current.release.value = val / 1000; }
+  };
+
+  const updateSat = (key: 'drive' | 'mix', val: number) => {
+    if (key === 'drive') {
+      setSatDrive(val);
+      if (satWaveShaperRef.current) {
+        const curve = new Float32Array(256);
+        for (let i = 0; i < 256; i++) {
+          const x = (i * 2) / 256 - 1;
+          const k = val * 2;
+          curve[i] = k > 0 ? ((3 + k) * x * 20) / (Math.PI + k * Math.abs(x)) : x;
+        }
+        satWaveShaperRef.current.curve = curve;
+      }
+    }
+    if (key === 'mix') {
+      setSatMix(val);
+      if (satGainRef.current) satGainRef.current.gain.value = val / 100;
+      if (satDryRef.current) satDryRef.current.gain.value = 1 - val / 100;
+    }
+  };
+
+  useEffect(() => {
+    if (tab !== 'spectrum' || !specAnalyserRef.current || !specCanvasRef.current) return;
+    const analyser = specAnalyserRef.current;
+    const canvas = specCanvasRef.current;
+    const ctx2d = canvas.getContext('2d');
+    if (!ctx2d) return;
+    const bufLen = analyser.frequencyBinCount;
+    const data = new Uint8Array(bufLen);
+    const draw = () => {
+      specAnimRef.current = requestAnimationFrame(draw);
+      analyser.getByteFrequencyData(data);
+      ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+      ctx2d.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx2d.fillRect(0, 0, canvas.width, canvas.height);
+      const barW = canvas.width / bufLen * 2.5;
+      for (let i = 0; i < bufLen; i++) {
+        const h = (data[i] / 255) * canvas.height;
+        const hue = (i / bufLen) * 160; // cyan → green
+        ctx2d.fillStyle = `hsl(${180 - hue}, 100%, 55%)`;
+        ctx2d.fillRect(i * barW, canvas.height - h, barW - 1, h);
+      }
+    };
+    draw();
+    return () => cancelAnimationFrame(specAnimRef.current);
+  }, [tab]);
+
   const s = {
-    wrap: { minHeight: '100vh', background: 'transparent', color: C.text, fontFamily: "'IBM Plex Mono', monospace", padding: '20px', boxSizing: 'border-box' as const, backgroundImage: 'radial-gradient(ellipse at 20% 20%, rgba(0,229,255,0.04) 0%, transparent 50%), radial-gradient(ellipse at 80% 80%, rgba(255,26,140,0.04) 0%, transparent 50%)' },
+    wrap: { minHeight: '100vh', background: '#0a0a0f', color: C.text, fontFamily: "'IBM Plex Mono', monospace", padding: '20px', boxSizing: 'border-box' as const, backgroundImage: 'radial-gradient(ellipse at 20% 20%, rgba(0,229,255,0.06) 0%, transparent 50%), radial-gradient(ellipse at 80% 80%, rgba(57,255,20,0.04) 0%, transparent 50%)' },
     header: { textAlign: 'center' as const, marginBottom: 24 },
     logo: { fontSize: 28, fontFamily: "'Orbitron', sans-serif", fontWeight: 900, letterSpacing: '0.15em', background: `linear-gradient(135deg, ${C.cyan}, ${C.pink}, ${C.lime})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' },
     sub: { fontSize: 10, color: C.muted, letterSpacing: '0.3em', marginTop: 4 },
     grid: { display: 'grid', gridTemplateColumns: '1fr 240px', gap: 16, maxWidth: 900, margin: '0 auto' },
     panel: { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20 },
-    sectionTitle: { fontSize: 10, color: C.muted, letterSpacing: '0.25em', textTransform: 'uppercase' as const, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 },
+    sectionTitle: { fontSize: 11, color: C.muted, letterSpacing: '0.25em', textTransform: 'uppercase' as const, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 },
     dot: (color: string) => ({ width: 6, height: 6, borderRadius: '50%', background: color, boxShadow: `0 0 6px ${color}` }),
-    dropzone: { border: `2px dashed ${file ? C.cyan : C.border}`, borderRadius: 10, padding: '28px 20px', textAlign: 'center' as const, cursor: 'pointer', transition: 'all 0.3s', background: file ? 'rgba(0,229,255,0.03)' : 'transparent' },
-    tab: (active: boolean) => ({ padding: '7px 16px', borderRadius: 6, border: `1px solid ${active ? C.cyan : C.border}`, background: active ? 'rgba(0,229,255,0.08)' : 'transparent', color: active ? C.cyan : C.muted, fontSize: 10, letterSpacing: '0.15em', cursor: 'pointer', transition: 'all 0.2s' }),
-    preset: (active: boolean) => ({ padding: '6px 12px', borderRadius: 6, border: `1px solid ${active ? C.pink : C.border}`, background: active ? 'rgba(57,255,20,0.08)' : 'transparent', color: active ? C.pink : C.muted, fontSize: 9, letterSpacing: '0.1em', cursor: 'pointer', transition: 'all 0.2s', textTransform: 'uppercase' as const }),
-    playBtn: { width: 52, height: 52, borderRadius: '50%', border: `2px solid ${playing ? C.pink : C.cyan}`, background: playing ? 'rgba(57,255,20,0.1)' : 'rgba(0,229,255,0.1)', color: playing ? C.pink : C.cyan, fontSize: 20, cursor: file ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: file ? `0 0 20px ${playing ? C.pink : C.cyan}40` : 'none', transition: 'all 0.2s', opacity: file ? 1 : 0.4 },
+    dropzone: { border: `2px dashed ${file ? C.cyan : C.border}`, borderRadius: 10, padding: '28px 20px', textAlign: 'center' as const, cursor: 'pointer', transition: 'all 0.3s', background: file ? 'rgba(0,229,255,0.05)' : 'rgba(255,255,255,0.01)' },
+    tab: (active: boolean) => ({ padding: '10px 18px', minHeight: 44, borderRadius: 6, border: `1px solid ${active ? C.cyan : C.border}`, background: active ? 'rgba(0,229,255,0.08)' : 'transparent', color: active ? C.cyan : C.muted, fontSize: 11, letterSpacing: '0.15em', cursor: 'pointer', transition: 'all 0.2s', touchAction: 'manipulation' }),
+    preset: (active: boolean) => ({ padding: '10px 14px', minHeight: 44, borderRadius: 6, border: `1px solid ${active ? C.pink : C.border}`, background: active ? 'rgba(57,255,20,0.08)' : 'transparent', color: active ? C.pink : C.muted, fontSize: 10, letterSpacing: '0.1em', cursor: 'pointer', transition: 'all 0.2s', textTransform: 'uppercase' as const, touchAction: 'manipulation' }),
+    playBtn: { width: 56, height: 56, borderRadius: '50%', border: `2px solid ${playing ? C.pink : C.cyan}`, background: playing ? 'rgba(57,255,20,0.1)' : 'rgba(0,229,255,0.1)', color: playing ? C.pink : C.cyan, fontSize: 22, cursor: file ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: file ? `0 0 20px ${playing ? C.pink : C.cyan}40` : 'none', transition: 'all 0.2s', opacity: file ? 1 : 0.4, touchAction: 'manipulation' },
   };
 
   const stats: [string, string][] = [
@@ -497,11 +640,13 @@ function KrazyCarmaMasterInner() {
     ['RELEASE', `${comp.release} ms`],
     ['STEREO WIDTH', `+${stereoWidth}%`],
     ['TARGET LUFS', `${targetLufs} LUFS`],
+    ['LIMITER', `${limiterThreshold} dBFS`],
+    ['SATURATION', `${satDrive.toFixed(1)} drv / ${satMix}% wet`],
   ];
 
   return (
     <div style={s.wrap}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=IBM+Plex+Mono:wght@300;400;500&display=swap'); * { box-sizing: border-box; } input[type=range] { -webkit-appearance: none; width: 100%; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.08); outline: none; } input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: ${C.cyan}; box-shadow: 0 0 8px ${C.cyan}80; cursor: ns-resize; }`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=IBM+Plex+Mono:wght@300;400;500&display=swap'); * { box-sizing: border-box; } input[type=range] { -webkit-appearance: none; width: 100%; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.08); outline: none; } input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: ${C.cyan}; box-shadow: 0 0 8px ${C.cyan}80; cursor: ns-resize; } @media (max-width: 700px) { .kc-grid { grid-template-columns: 1fr !important; } .kc-knob-row { flex-wrap: wrap; justify-content: space-evenly !important; gap: 20px !important; } .kc-knob-row svg { width: 64px !important; height: 64px !important; } .kc-tab-row { flex-wrap: wrap !important; } }`}</style>
 
       <div style={s.header}>
         <div style={s.logo}>KRAZYCARMA</div>
@@ -528,18 +673,25 @@ function KrazyCarmaMasterInner() {
         </div>
       )}
 
-      <div style={s.grid}>
+      <div style={s.grid} className="kc-grid">
         {/* LEFT COLUMN */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
           {/* File Upload */}
           <div style={s.panel}>
             <div style={s.sectionTitle}><span style={s.dot(C.cyan)} />INPUT TRACK</div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".mp3,.wav,.flac,.aac,.ogg,.m4a,audio/mpeg,audio/wav,audio/flac,audio/aac,audio/ogg,audio/mp4,audio/x-m4a"
+              style={{ display: 'none' }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) loadFile(f); e.target.value = ''; }}
+            />
             <div
               style={s.dropzone}
               onDrop={onDrop}
               onDragOver={e => e.preventDefault()}
-              onClick={() => { const i = document.createElement('input'); i.type='file'; i.accept='audio/*'; i.onchange=(e)=>{ const target = e.target as HTMLInputElement; if(target.files?.[0]) loadFile(target.files[0]); }; i.click(); }}
+              onClick={() => fileInputRef.current?.click()}
             >
               {file ? (
                 <div>
@@ -549,11 +701,16 @@ function KrazyCarmaMasterInner() {
               ) : (
                 <div>
                   <div style={{ fontSize: 28, marginBottom: 8 }}>{'🎵'}</div>
-                  <div style={{ fontSize: 12, color: C.text, marginBottom: 4 }}>Drop audio file here</div>
-                  <div style={{ fontSize: 10, color: C.muted }}>{'MP3 · WAV · FLAC · AAC · OGG'}</div>
+                  <div style={{ fontSize: 12, color: C.text, marginBottom: 4 }}>Drop audio file here or click to browse</div>
+                  <div style={{ fontSize: 10, color: C.muted }}>{'MP3 · WAV · FLAC · AAC · OGG · M4A'}</div>
                 </div>
               )}
             </div>
+            {uploadError && (
+              <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 6, border: '1px solid rgba(255,80,80,0.4)', background: 'rgba(255,80,80,0.06)', color: '#ff6060', fontSize: 11 }}>
+                {uploadError}
+              </div>
+            )}
 
             {file && (
               <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -593,8 +750,8 @@ function KrazyCarmaMasterInner() {
                   <span style={{ fontSize: 10, color: C.text }}>{aiAnalysis.genre}</span>
                 </div>
                 <div style={{ fontSize: 10, color: C.muted, lineHeight: 1.7 }}>{aiAnalysis.summary}</div>
-                {aiAnalysis.eqTips && <div style={{ marginTop: 8, fontSize: 9, color: C.dim }}>EQ: {aiAnalysis.eqTips}</div>}
-                {aiAnalysis.compTips && <div style={{ marginTop: 4, fontSize: 9, color: C.dim }}>COMP: {aiAnalysis.compTips}</div>}
+                {aiAnalysis.eqTips && <div style={{ marginTop: 8, fontSize: 11, color: C.dim }}>EQ: {aiAnalysis.eqTips}</div>}
+                {aiAnalysis.compTips && <div style={{ marginTop: 4, fontSize: 11, color: C.dim }}>COMP: {aiAnalysis.compTips}</div>}
                 {aiAnalysis.recommendedPreset && (
                   <button style={{ ...s.preset(true), marginTop: 10, width: '100%' }} onClick={() => applyPreset(aiAnalysis.recommendedPreset!)}>
                     {'✦'} APPLY RECOMMENDED: {AI_PRESETS[aiAnalysis.recommendedPreset]?.name}
@@ -606,21 +763,21 @@ function KrazyCarmaMasterInner() {
 
           {/* EQ / Comp Tabs */}
           <div style={s.panel}>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
-              {[['eq','EQ'], ['comp','COMPRESS'], ['stereo','STEREO']].map(([k,l]) => (
-                <button key={k} style={s.tab(tab===k)} onClick={() => setTab(k)}>{l}</button>
+            <div className="kc-tab-row" style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
+              {[['eq','EQ'], ['comp','COMPRESS'], ['stereo','STEREO'], ['limiter','LIMIT'], ['sat','SATURATE'], ['spectrum','SPECTRUM']].map(([k,l]) => (
+                <button key={k} type="button" style={s.tab(tab===k)} onClick={() => setTab(k)}>{l}</button>
               ))}
             </div>
 
             {tab === 'eq' && (
               <div>
                 <div style={s.sectionTitle}><span style={s.dot(C.cyan)} />6-BAND PARAMETRIC EQ</div>
-                <div style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 16 }}>
+                <div className="kc-knob-row" style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 16 }}>
                   {eqBands.map((b, i) => (
                     <div key={b.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
                       <Knob value={b.gain} min={-12} max={12} onChange={v => updateEq(i, Math.round(v * 10) / 10)} color={[C.cyan, C.cyan, C.lime, C.lime, C.pink, C.pink][i]} size={52} />
-                      <div style={{ fontSize: 9, color: C.muted }}>{b.label}</div>
-                      <div style={{ fontSize: 9, color: C.text, fontFamily: 'monospace' }}>{b.gain > 0 ? '+' : ''}{b.gain.toFixed(1)}dB</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>{b.label}</div>
+                      <div style={{ fontSize: 11, color: C.text, fontFamily: 'monospace' }}>{b.gain > 0 ? '+' : ''}{b.gain.toFixed(1)}dB</div>
                     </div>
                   ))}
                 </div>
@@ -630,31 +787,31 @@ function KrazyCarmaMasterInner() {
             {tab === 'comp' && (
               <div>
                 <div style={s.sectionTitle}><span style={s.dot(C.orange)} />DYNAMICS COMPRESSOR</div>
-                <div style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 16 }}>
+                <div className="kc-knob-row" style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 16 }}>
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
                     <Knob value={comp.threshold} min={-40} max={0} onChange={v => updateComp('threshold', Math.round(v))} color={C.orange} size={52}/>
-                    <div style={{fontSize:9,color:C.muted}}>THRESHOLD</div>
-                    <div style={{fontSize:9,color:C.text,fontFamily:'monospace'}}>{comp.threshold}dB</div>
+                    <div style={{fontSize:11,color:C.muted}}>THRESHOLD</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>{comp.threshold}dB</div>
                   </div>
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
                     <Knob value={comp.ratio} min={1} max={20} onChange={v => updateComp('ratio', Math.round(v * 2) / 2)} color={C.orange} size={52}/>
-                    <div style={{fontSize:9,color:C.muted}}>RATIO</div>
-                    <div style={{fontSize:9,color:C.text,fontFamily:'monospace'}}>{comp.ratio}:1</div>
+                    <div style={{fontSize:11,color:C.muted}}>RATIO</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>{comp.ratio}:1</div>
                   </div>
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
                     <Knob value={comp.attack} min={1} max={100} onChange={v => updateComp('attack', Math.round(v))} color={C.lime} size={52}/>
-                    <div style={{fontSize:9,color:C.muted}}>ATTACK</div>
-                    <div style={{fontSize:9,color:C.text,fontFamily:'monospace'}}>{comp.attack}ms</div>
+                    <div style={{fontSize:11,color:C.muted}}>ATTACK</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>{comp.attack}ms</div>
                   </div>
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
                     <Knob value={comp.release} min={10} max={500} onChange={v => updateComp('release', Math.round(v))} color={C.lime} size={52}/>
-                    <div style={{fontSize:9,color:C.muted}}>RELEASE</div>
-                    <div style={{fontSize:9,color:C.text,fontFamily:'monospace'}}>{comp.release}ms</div>
+                    <div style={{fontSize:11,color:C.muted}}>RELEASE</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>{comp.release}ms</div>
                   </div>
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
                     <Knob value={comp.makeup} min={0} max={12} onChange={v => updateComp('makeup', Math.round(v * 2) / 2)} color={C.pink} size={52}/>
-                    <div style={{fontSize:9,color:C.muted}}>MAKEUP</div>
-                    <div style={{fontSize:9,color:C.text,fontFamily:'monospace'}}>+{comp.makeup}dB</div>
+                    <div style={{fontSize:11,color:C.muted}}>MAKEUP</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>+{comp.makeup}dB</div>
                   </div>
                 </div>
               </div>
@@ -663,19 +820,68 @@ function KrazyCarmaMasterInner() {
             {tab === 'stereo' && (
               <div>
                 <div style={s.sectionTitle}><span style={s.dot(C.purple)} />STEREO & LOUDNESS</div>
-                <div style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 24 }}>
+                <div className="kc-knob-row" style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 24 }}>
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
                     <Knob value={stereoWidth} min={0} max={100} onChange={v => setStereoWidth(Math.round(v))} color={C.purple} size={60}/>
-                    <div style={{fontSize:9,color:C.muted}}>STEREO WIDTH</div>
-                    <div style={{fontSize:9,color:C.text,fontFamily:'monospace'}}>+{stereoWidth}%</div>
+                    <div style={{fontSize:11,color:C.muted}}>STEREO WIDTH</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>+{stereoWidth}%</div>
                   </div>
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
                     <Knob value={targetLufs} min={-23} max={-6} onChange={v => setTargetLufs(Math.round(v))} color={C.lime} size={60}/>
-                    <div style={{fontSize:9,color:C.muted}}>TARGET LUFS</div>
-                    <div style={{fontSize:9,color:C.text,fontFamily:'monospace'}}>{targetLufs} LUFS</div>
-                    <div style={{fontSize:8,color:C.dim,textAlign:'center'}}>Streaming: -14<br/>Club: -9</div>
+                    <div style={{fontSize:11,color:C.muted}}>TARGET LUFS</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>{targetLufs} LUFS</div>
+                    <div style={{fontSize:10,color:C.dim,textAlign:'center'}}>Streaming: -14<br/>Club: -9</div>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {tab === 'limiter' && (
+              <div>
+                <div style={s.sectionTitle}><span style={s.dot(C.pink)} />BRICK-WALL LIMITER</div>
+                <div style={{ fontSize: 10, color: C.dim, marginBottom: 16 }}>Prevents clipping after all processing. Set threshold just below 0 dBFS.</div>
+                <div className="kc-knob-row" style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 24 }}>
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+                    <Knob value={limiterThreshold} min={-12} max={0} onChange={v => updateLimiter('threshold', Math.round(v * 10) / 10)} color={C.pink} size={60}/>
+                    <div style={{fontSize:11,color:C.muted}}>CEILING</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>{limiterThreshold} dBFS</div>
+                  </div>
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+                    <Knob value={limiterRelease} min={1} max={300} onChange={v => updateLimiter('release', Math.round(v))} color={C.orange} size={60}/>
+                    <div style={{fontSize:11,color:C.muted}}>RELEASE</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>{limiterRelease} ms</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {tab === 'sat' && (
+              <div>
+                <div style={s.sectionTitle}><span style={s.dot(C.orange)} />HARMONIC SATURATION</div>
+                <div style={{ fontSize: 10, color: C.dim, marginBottom: 16 }}>Adds warm harmonic distortion. Drive adds odd harmonics; Mix blends dry/wet.</div>
+                <div className="kc-knob-row" style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 24 }}>
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+                    <Knob value={satDrive} min={0} max={10} onChange={v => updateSat('drive', Math.round(v * 10) / 10)} color={C.orange} size={60}/>
+                    <div style={{fontSize:11,color:C.muted}}>DRIVE</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>{satDrive.toFixed(1)}</div>
+                  </div>
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+                    <Knob value={satMix} min={0} max={100} onChange={v => updateSat('mix', Math.round(v))} color={C.lime} size={60}/>
+                    <div style={{fontSize:11,color:C.muted}}>WET MIX</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>{satMix}%</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {tab === 'spectrum' && (
+              <div>
+                <div style={s.sectionTitle}><span style={s.dot(C.cyan)} />SPECTRUM ANALYZER</div>
+                {!file ? (
+                  <div style={{ textAlign: 'center', padding: '24px 0', color: C.muted, fontSize: 11 }}>Load a file and press play to see the spectrum</div>
+                ) : (
+                  <canvas ref={specCanvasRef} width={500} height={160} style={{ width: '100%', height: 160, borderRadius: 6, background: 'rgba(0,0,0,0.4)', border: `1px solid ${C.border}` }} />
+                )}
               </div>
             )}
           </div>
@@ -689,8 +895,8 @@ function KrazyCarmaMasterInner() {
             <div style={s.sectionTitle}><span style={s.dot(C.lime)} />PARAMETERS</div>
             {stats.map(([l, v]) => (
               <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid rgba(255,255,255,0.04)` }}>
-                <span style={{ fontSize: 9, color: C.muted }}>{l}</span>
-                <span style={{ fontSize: 9, color: C.text, fontFamily: 'monospace' }}>{v}</span>
+                <span style={{ fontSize: 11, color: C.muted }}>{l}</span>
+                <span style={{ fontSize: 11, color: C.text, fontFamily: 'monospace' }}>{v}</span>
               </div>
             ))}
           </div>
@@ -701,8 +907,8 @@ function KrazyCarmaMasterInner() {
             {exporting && (
               <div style={{ marginBottom: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span style={{ fontSize: 9, color: C.muted }}>Rendering...</span>
-                  <span style={{ fontSize: 9, color: C.cyan, fontFamily: 'monospace' }}>{expProg}%</span>
+                  <span style={{ fontSize: 11, color: C.muted }}>Rendering...</span>
+                  <span style={{ fontSize: 11, color: C.cyan, fontFamily: 'monospace' }}>{expProg}%</span>
                 </div>
                 <div style={{ height: 5, background: 'rgba(255,255,255,0.05)', borderRadius: 3, overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${expProg}%`, background: `linear-gradient(90deg, ${C.cyan}, ${C.pink}, ${C.lime})`, transition: 'width 0.3s', borderRadius: 3 }} />
@@ -716,7 +922,7 @@ function KrazyCarmaMasterInner() {
             >
               {exporting ? '⏳ RENDERING...' : expProg === 100 ? '✓ EXPORTED!' : '↓ EXPORT MASTER'}
             </button>
-            <p style={{ marginTop: 10, fontSize: 8, color: C.dim, textAlign: 'center', lineHeight: 1.7 }}>
+            <p style={{ marginTop: 10, fontSize: 10, color: C.dim, textAlign: 'center', lineHeight: 1.7 }}>
               {'Offline render · Full chain · 16-bit WAV'}
             </p>
           </div>
@@ -724,7 +930,7 @@ function KrazyCarmaMasterInner() {
           {/* Tips */}
           <div style={{ ...s.panel, background: 'rgba(179,255,0,0.02)', border: `1px solid rgba(179,255,0,0.1)` }}>
             <div style={s.sectionTitle}><span style={s.dot(C.lime)} />QUICK TIPS</div>
-            <div style={{ fontSize: 9, color: C.muted, lineHeight: 1.9 }}>
+            <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.9 }}>
               <div>{'•'} Streaming targets -14 LUFS</div>
               <div>{'•'} Club masters peak -9 LUFS</div>
               <div>{'•'} Boost 60Hz for warmth</div>
