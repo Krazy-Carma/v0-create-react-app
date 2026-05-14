@@ -189,7 +189,9 @@ interface AIAnalysis {
 function KrazyCarmaMasterInner() {
   const [file, setFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState('');
+  const [uploadError, setUploadError] = useState('');
   const [playing, setPlaying] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [eqBands, setEqBands] = useState<EqBand[]>(EQ_BANDS.map(b => ({ ...b })));
   const [comp, setComp] = useState<CompSettings>({ threshold: -18, ratio: 3, attack: 10, release: 100, makeup: 0 });
   const [stereoWidth, setStereoWidth] = useState(20);
@@ -280,13 +282,21 @@ function KrazyCarmaMasterInner() {
   }, [comp.attack, comp.makeup, comp.ratio, comp.release, comp.threshold, eqBands]);
 
   const loadFile = async (f: File) => {
-    setFile(f);
-    setFileName(f.name);
-    setPlaying(false);
-    setExpProg(0);
-    setAiAnalysis(null);
-    const ab = await f.arrayBuffer();
-    await initAudio(ab.slice(0));
+    setUploadError('');
+    try {
+      setFile(f);
+      setFileName(f.name);
+      setPlaying(false);
+      setExpProg(0);
+      setAiAnalysis(null);
+      const ab = await f.arrayBuffer();
+      await initAudio(ab.slice(0));
+    } catch (err) {
+      setFile(null);
+      setFileName('');
+      const msg = err instanceof Error ? err.message : String(err);
+      setUploadError(`Could not load audio: ${msg}. Try a WAV or MP3 file.`);
+    }
   };
 
   const onDrop = (e: React.DragEvent) => {
@@ -550,11 +560,18 @@ function KrazyCarmaMasterInner() {
           {/* File Upload */}
           <div style={s.panel}>
             <div style={s.sectionTitle}><span style={s.dot(C.cyan)} />INPUT TRACK</div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".mp3,.wav,.flac,.aac,.ogg,.m4a,audio/mpeg,audio/wav,audio/flac,audio/aac,audio/ogg,audio/mp4,audio/x-m4a"
+              style={{ display: 'none' }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) loadFile(f); e.target.value = ''; }}
+            />
             <div
               style={s.dropzone}
               onDrop={onDrop}
               onDragOver={e => e.preventDefault()}
-              onClick={() => { const i = document.createElement('input'); i.type='file'; i.accept='.mp3,.wav,.flac,.aac,.ogg,.m4a,audio/mpeg,audio/wav,audio/flac,audio/aac,audio/ogg,audio/mp4,audio/x-m4a'; i.onchange=(e)=>{ const target = e.target as HTMLInputElement; if(target.files?.[0]) loadFile(target.files[0]); }; i.click(); }}
+              onClick={() => fileInputRef.current?.click()}
             >
               {file ? (
                 <div>
@@ -564,11 +581,16 @@ function KrazyCarmaMasterInner() {
               ) : (
                 <div>
                   <div style={{ fontSize: 28, marginBottom: 8 }}>{'🎵'}</div>
-                  <div style={{ fontSize: 12, color: C.text, marginBottom: 4 }}>Drop audio file here</div>
-                  <div style={{ fontSize: 10, color: C.muted }}>{'MP3 · WAV · FLAC · AAC · OGG'}</div>
+                  <div style={{ fontSize: 12, color: C.text, marginBottom: 4 }}>Drop audio file here or click to browse</div>
+                  <div style={{ fontSize: 10, color: C.muted }}>{'MP3 · WAV · FLAC · AAC · OGG · M4A'}</div>
                 </div>
               )}
             </div>
+            {uploadError && (
+              <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 6, border: '1px solid rgba(255,80,80,0.4)', background: 'rgba(255,80,80,0.06)', color: '#ff6060', fontSize: 11 }}>
+                {uploadError}
+              </div>
+            )}
 
             {file && (
               <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 14 }}>
