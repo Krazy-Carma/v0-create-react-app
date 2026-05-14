@@ -554,7 +554,7 @@ function KrazyCarmaMasterInner() {
               style={s.dropzone}
               onDrop={onDrop}
               onDragOver={e => e.preventDefault()}
-              onClick={() => { const i = document.createElement('input'); i.type='file'; i.accept='audio/*'; i.onchange=(e)=>{ const target = e.target as HTMLInputElement; if(target.files?.[0]) loadFile(target.files[0]); }; i.click(); }}
+              onClick={() => { const i = document.createElement('input'); i.type='file'; i.accept='.mp3,.wav,.flac,.aac,.ogg,.m4a,audio/mpeg,audio/wav,audio/flac,audio/aac,audio/ogg,audio/mp4,audio/x-m4a'; i.onchange=(e)=>{ const target = e.target as HTMLInputElement; if(target.files?.[0]) loadFile(target.files[0]); }; i.click(); }}
             >
               {file ? (
                 <div>
