@@ -204,6 +204,12 @@ function KrazyCarmaMasterInner() {
   const [analyzing, setAnalyzing] = useState(false);
   const [activePreset, setActivePreset] = useState<string | null>(null);
   const [tab, setTab] = useState('eq');
+  const [limiterThreshold, setLimiterThreshold] = useState(-1);
+  const [limiterRelease, setLimiterRelease] = useState(50);
+  const [satDrive, setSatDrive] = useState(0);
+  const [satMix, setSatMix] = useState(50);
+  const specCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const specAnimRef = useRef<number>(0);
   const [usesLeft, setUsesLeft] = useState<number | null>(null);
   const [isSubscriber, setIsSubscriber] = useState(false);
   const [usageLoaded, setUsageLoaded] = useState(false);
@@ -234,6 +240,11 @@ function KrazyCarmaMasterInner() {
   const analyserRRef = useRef<AnalyserNode | null>(null);
   const animRef = useRef<number>(0);
   const gainNodeRef = useRef<GainNode | null>(null);
+  const limiterRef = useRef<DynamicsCompressorNode | null>(null);
+  const satWaveShaperRef = useRef<WaveShaperNode | null>(null);
+  const satGainRef = useRef<GainNode | null>(null);
+  const satDryRef = useRef<GainNode | null>(null);
+  const specAnalyserRef = useRef<AnalyserNode | null>(null);
 
   const initAudio = useCallback(async (arrayBuf: ArrayBuffer) => {
     if (audioCtxRef.current) audioCtxRef.current.close();
@@ -273,13 +284,45 @@ function KrazyCarmaMasterInner() {
     gainNode.gain.value = Math.pow(10, comp.makeup / 20);
     gainNodeRef.current = gainNode;
 
+    // Saturation (waveshaper with dry/wet mix)
+    const curve = new Float32Array(256);
+    for (let i = 0; i < 256; i++) {
+      const x = (i * 2) / 256 - 1;
+      const k = satDrive * 2;
+      curve[i] = k > 0 ? ((3 + k) * x * 20) / (Math.PI + k * Math.abs(x)) : x;
+    }
+    const satWS = ctx.createWaveShaper(); satWS.curve = curve; satWS.oversample = '4x'; satWaveShaperRef.current = satWS;
+    const satWet = ctx.createGain(); satWet.gain.value = satMix / 100; satGainRef.current = satWet;
+    const satDry = ctx.createGain(); satDry.gain.value = 1 - satMix / 100; satDryRef.current = satDry;
+
+    // Limiter (brick-wall)
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = limiterThreshold;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.001;
+    limiter.release.value = limiterRelease / 1000;
+    limiterRef.current = limiter;
+
+    // Spectrum analyser (for visualisation)
+    const specAnalyser = ctx.createAnalyser();
+    specAnalyser.fftSize = 2048;
+    specAnalyserRef.current = specAnalyser;
+
     merger.connect(eqChain[0]);
     eqChain[eqChain.length - 1].connect(compNode);
     compNode.connect(gainNode);
-    gainNode.connect(ctx.destination);
+    // Saturation parallel dry/wet
+    gainNode.connect(satDry);
+    gainNode.connect(satWS);
+    satWS.connect(satWet);
+    satDry.connect(limiter);
+    satWet.connect(limiter);
+    limiter.connect(specAnalyser);
+    specAnalyser.connect(ctx.destination);
 
     return { ctx, splitter, decoded };
-  }, [comp.attack, comp.makeup, comp.ratio, comp.release, comp.threshold, eqBands]);
+  }, [comp.attack, comp.makeup, comp.ratio, comp.release, comp.threshold, eqBands, satDrive, satMix, limiterThreshold, limiterRelease]);
 
   const loadFile = async (f: File) => {
     setUploadError('');
@@ -429,10 +472,34 @@ function KrazyCarmaMasterInner() {
     const lufsGain = Math.pow(10, ((targetLufs - (-14)) / 20));
     gain.gain.value = lufsGain * Math.pow(10, comp.makeup / 20);
 
+    // Saturation
+    const satCurve = new Float32Array(256);
+    for (let i = 0; i < 256; i++) {
+      const x = (i * 2) / 256 - 1;
+      const k = satDrive * 2;
+      satCurve[i] = k > 0 ? ((3 + k) * x * 20) / (Math.PI + k * Math.abs(x)) : x;
+    }
+    const satWS = fullCtx.createWaveShaper(); satWS.curve = satCurve; satWS.oversample = '4x';
+    const satWet = fullCtx.createGain(); satWet.gain.value = satMix / 100;
+    const satDryG = fullCtx.createGain(); satDryG.gain.value = 1 - satMix / 100;
+
+    // Limiter
+    const limiter = fullCtx.createDynamicsCompressor();
+    limiter.threshold.value = limiterThreshold;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.001;
+    limiter.release.value = limiterRelease / 1000;
+
     merger.connect(eq[0]);
     eq[eq.length-1].connect(compressor);
     compressor.connect(gain);
-    gain.connect(fullCtx.destination);
+    gain.connect(satDryG);
+    gain.connect(satWS);
+    satWS.connect(satWet);
+    satDryG.connect(limiter);
+    satWet.connect(limiter);
+    limiter.connect(fullCtx.destination);
     src.start(0);
 
     const progInterval = setInterval(() => setExpProg(p => Math.min(p + 3, 90)), 100);
@@ -500,6 +567,57 @@ function KrazyCarmaMasterInner() {
     if (key === 'makeup' && gainNodeRef.current) gainNodeRef.current.gain.value = Math.pow(10, val / 20);
   };
 
+  const updateLimiter = (key: 'threshold' | 'release', val: number) => {
+    if (key === 'threshold') { setLimiterThreshold(val); if (limiterRef.current) limiterRef.current.threshold.value = val; }
+    if (key === 'release') { setLimiterRelease(val); if (limiterRef.current) limiterRef.current.release.value = val / 1000; }
+  };
+
+  const updateSat = (key: 'drive' | 'mix', val: number) => {
+    if (key === 'drive') {
+      setSatDrive(val);
+      if (satWaveShaperRef.current) {
+        const curve = new Float32Array(256);
+        for (let i = 0; i < 256; i++) {
+          const x = (i * 2) / 256 - 1;
+          const k = val * 2;
+          curve[i] = k > 0 ? ((3 + k) * x * 20) / (Math.PI + k * Math.abs(x)) : x;
+        }
+        satWaveShaperRef.current.curve = curve;
+      }
+    }
+    if (key === 'mix') {
+      setSatMix(val);
+      if (satGainRef.current) satGainRef.current.gain.value = val / 100;
+      if (satDryRef.current) satDryRef.current.gain.value = 1 - val / 100;
+    }
+  };
+
+  useEffect(() => {
+    if (tab !== 'spectrum' || !specAnalyserRef.current || !specCanvasRef.current) return;
+    const analyser = specAnalyserRef.current;
+    const canvas = specCanvasRef.current;
+    const ctx2d = canvas.getContext('2d');
+    if (!ctx2d) return;
+    const bufLen = analyser.frequencyBinCount;
+    const data = new Uint8Array(bufLen);
+    const draw = () => {
+      specAnimRef.current = requestAnimationFrame(draw);
+      analyser.getByteFrequencyData(data);
+      ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+      ctx2d.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx2d.fillRect(0, 0, canvas.width, canvas.height);
+      const barW = canvas.width / bufLen * 2.5;
+      for (let i = 0; i < bufLen; i++) {
+        const h = (data[i] / 255) * canvas.height;
+        const hue = (i / bufLen) * 160; // cyan → green
+        ctx2d.fillStyle = `hsl(${180 - hue}, 100%, 55%)`;
+        ctx2d.fillRect(i * barW, canvas.height - h, barW - 1, h);
+      }
+    };
+    draw();
+    return () => cancelAnimationFrame(specAnimRef.current);
+  }, [tab]);
+
   const s = {
     wrap: { minHeight: '100vh', background: '#0a0a0f', color: C.text, fontFamily: "'IBM Plex Mono', monospace", padding: '20px', boxSizing: 'border-box' as const, backgroundImage: 'radial-gradient(ellipse at 20% 20%, rgba(0,229,255,0.06) 0%, transparent 50%), radial-gradient(ellipse at 80% 80%, rgba(57,255,20,0.04) 0%, transparent 50%)' },
     header: { textAlign: 'center' as const, marginBottom: 24 },
@@ -510,9 +628,9 @@ function KrazyCarmaMasterInner() {
     sectionTitle: { fontSize: 11, color: C.muted, letterSpacing: '0.25em', textTransform: 'uppercase' as const, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 },
     dot: (color: string) => ({ width: 6, height: 6, borderRadius: '50%', background: color, boxShadow: `0 0 6px ${color}` }),
     dropzone: { border: `2px dashed ${file ? C.cyan : C.border}`, borderRadius: 10, padding: '28px 20px', textAlign: 'center' as const, cursor: 'pointer', transition: 'all 0.3s', background: file ? 'rgba(0,229,255,0.05)' : 'rgba(255,255,255,0.01)' },
-    tab: (active: boolean) => ({ padding: '7px 16px', borderRadius: 6, border: `1px solid ${active ? C.cyan : C.border}`, background: active ? 'rgba(0,229,255,0.08)' : 'transparent', color: active ? C.cyan : C.muted, fontSize: 11, letterSpacing: '0.15em', cursor: 'pointer', transition: 'all 0.2s' }),
-    preset: (active: boolean) => ({ padding: '6px 12px', borderRadius: 6, border: `1px solid ${active ? C.pink : C.border}`, background: active ? 'rgba(57,255,20,0.08)' : 'transparent', color: active ? C.pink : C.muted, fontSize: 10, letterSpacing: '0.1em', cursor: 'pointer', transition: 'all 0.2s', textTransform: 'uppercase' as const }),
-    playBtn: { width: 52, height: 52, borderRadius: '50%', border: `2px solid ${playing ? C.pink : C.cyan}`, background: playing ? 'rgba(57,255,20,0.1)' : 'rgba(0,229,255,0.1)', color: playing ? C.pink : C.cyan, fontSize: 20, cursor: file ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: file ? `0 0 20px ${playing ? C.pink : C.cyan}40` : 'none', transition: 'all 0.2s', opacity: file ? 1 : 0.4 },
+    tab: (active: boolean) => ({ padding: '10px 18px', minHeight: 44, borderRadius: 6, border: `1px solid ${active ? C.cyan : C.border}`, background: active ? 'rgba(0,229,255,0.08)' : 'transparent', color: active ? C.cyan : C.muted, fontSize: 11, letterSpacing: '0.15em', cursor: 'pointer', transition: 'all 0.2s', touchAction: 'manipulation' }),
+    preset: (active: boolean) => ({ padding: '10px 14px', minHeight: 44, borderRadius: 6, border: `1px solid ${active ? C.pink : C.border}`, background: active ? 'rgba(57,255,20,0.08)' : 'transparent', color: active ? C.pink : C.muted, fontSize: 10, letterSpacing: '0.1em', cursor: 'pointer', transition: 'all 0.2s', textTransform: 'uppercase' as const, touchAction: 'manipulation' }),
+    playBtn: { width: 56, height: 56, borderRadius: '50%', border: `2px solid ${playing ? C.pink : C.cyan}`, background: playing ? 'rgba(57,255,20,0.1)' : 'rgba(0,229,255,0.1)', color: playing ? C.pink : C.cyan, fontSize: 22, cursor: file ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: file ? `0 0 20px ${playing ? C.pink : C.cyan}40` : 'none', transition: 'all 0.2s', opacity: file ? 1 : 0.4, touchAction: 'manipulation' },
   };
 
   const stats: [string, string][] = [
@@ -522,11 +640,13 @@ function KrazyCarmaMasterInner() {
     ['RELEASE', `${comp.release} ms`],
     ['STEREO WIDTH', `+${stereoWidth}%`],
     ['TARGET LUFS', `${targetLufs} LUFS`],
+    ['LIMITER', `${limiterThreshold} dBFS`],
+    ['SATURATION', `${satDrive.toFixed(1)} drv / ${satMix}% wet`],
   ];
 
   return (
     <div style={s.wrap}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=IBM+Plex+Mono:wght@300;400;500&display=swap'); * { box-sizing: border-box; } input[type=range] { -webkit-appearance: none; width: 100%; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.08); outline: none; } input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: ${C.cyan}; box-shadow: 0 0 8px ${C.cyan}80; cursor: ns-resize; } @media (max-width: 700px) { .kc-grid { grid-template-columns: 1fr !important; } .kc-knob-row { flex-wrap: wrap; justify-content: space-evenly !important; } }`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=IBM+Plex+Mono:wght@300;400;500&display=swap'); * { box-sizing: border-box; } input[type=range] { -webkit-appearance: none; width: 100%; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.08); outline: none; } input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: ${C.cyan}; box-shadow: 0 0 8px ${C.cyan}80; cursor: ns-resize; } @media (max-width: 700px) { .kc-grid { grid-template-columns: 1fr !important; } .kc-knob-row { flex-wrap: wrap; justify-content: space-evenly !important; gap: 20px !important; } .kc-knob-row svg { width: 64px !important; height: 64px !important; } .kc-tab-row { flex-wrap: wrap !important; } }`}</style>
 
       <div style={s.header}>
         <div style={s.logo}>KRAZYCARMA</div>
@@ -643,9 +763,9 @@ function KrazyCarmaMasterInner() {
 
           {/* EQ / Comp Tabs */}
           <div style={s.panel}>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
-              {[['eq','EQ'], ['comp','COMPRESS'], ['stereo','STEREO']].map(([k,l]) => (
-                <button key={k} style={s.tab(tab===k)} onClick={() => setTab(k)}>{l}</button>
+            <div className="kc-tab-row" style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
+              {[['eq','EQ'], ['comp','COMPRESS'], ['stereo','STEREO'], ['limiter','LIMIT'], ['sat','SATURATE'], ['spectrum','SPECTRUM']].map(([k,l]) => (
+                <button key={k} type="button" style={s.tab(tab===k)} onClick={() => setTab(k)}>{l}</button>
               ))}
             </div>
 
@@ -713,6 +833,55 @@ function KrazyCarmaMasterInner() {
                     <div style={{fontSize:10,color:C.dim,textAlign:'center'}}>Streaming: -14<br/>Club: -9</div>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {tab === 'limiter' && (
+              <div>
+                <div style={s.sectionTitle}><span style={s.dot(C.pink)} />BRICK-WALL LIMITER</div>
+                <div style={{ fontSize: 10, color: C.dim, marginBottom: 16 }}>Prevents clipping after all processing. Set threshold just below 0 dBFS.</div>
+                <div className="kc-knob-row" style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 24 }}>
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+                    <Knob value={limiterThreshold} min={-12} max={0} onChange={v => updateLimiter('threshold', Math.round(v * 10) / 10)} color={C.pink} size={60}/>
+                    <div style={{fontSize:11,color:C.muted}}>CEILING</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>{limiterThreshold} dBFS</div>
+                  </div>
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+                    <Knob value={limiterRelease} min={1} max={300} onChange={v => updateLimiter('release', Math.round(v))} color={C.orange} size={60}/>
+                    <div style={{fontSize:11,color:C.muted}}>RELEASE</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>{limiterRelease} ms</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {tab === 'sat' && (
+              <div>
+                <div style={s.sectionTitle}><span style={s.dot(C.orange)} />HARMONIC SATURATION</div>
+                <div style={{ fontSize: 10, color: C.dim, marginBottom: 16 }}>Adds warm harmonic distortion. Drive adds odd harmonics; Mix blends dry/wet.</div>
+                <div className="kc-knob-row" style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 24 }}>
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+                    <Knob value={satDrive} min={0} max={10} onChange={v => updateSat('drive', Math.round(v * 10) / 10)} color={C.orange} size={60}/>
+                    <div style={{fontSize:11,color:C.muted}}>DRIVE</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>{satDrive.toFixed(1)}</div>
+                  </div>
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+                    <Knob value={satMix} min={0} max={100} onChange={v => updateSat('mix', Math.round(v))} color={C.lime} size={60}/>
+                    <div style={{fontSize:11,color:C.muted}}>WET MIX</div>
+                    <div style={{fontSize:11,color:C.text,fontFamily:'monospace'}}>{satMix}%</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {tab === 'spectrum' && (
+              <div>
+                <div style={s.sectionTitle}><span style={s.dot(C.cyan)} />SPECTRUM ANALYZER</div>
+                {!file ? (
+                  <div style={{ textAlign: 'center', padding: '24px 0', color: C.muted, fontSize: 11 }}>Load a file and press play to see the spectrum</div>
+                ) : (
+                  <canvas ref={specCanvasRef} width={500} height={160} style={{ width: '100%', height: 160, borderRadius: 6, background: 'rgba(0,0,0,0.4)', border: `1px solid ${C.border}` }} />
+                )}
               </div>
             )}
           </div>
