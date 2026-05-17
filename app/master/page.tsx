@@ -440,8 +440,11 @@ function KrazyCarmaMasterInner() {
     const a = document.createElement('a');
     a.href = url;
     a.download = fileName.replace(/\.[^.]+$/, '') + '_mastered.wav';
+    a.style.display = 'none';
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
 
     setExpProg(100);
     setTimeout(() => { setExporting(false); }, 1500);
@@ -519,7 +522,7 @@ function KrazyCarmaMasterInner() {
 
   return (
     <div style={s.wrap}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=IBM+Plex+Mono:wght@300;400;500&display=swap'); * { box-sizing: border-box; } input[type=range] { -webkit-appearance: none; width: 100%; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.08); outline: none; } input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: ${C.cyan}; box-shadow: 0 0 8px ${C.cyan}80; cursor: ns-resize; }`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=IBM+Plex+Mono:wght@300;400;500&display=swap'); * { box-sizing: border-box; } input[type=range] { -webkit-appearance: none; width: 100%; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.08); outline: none; } input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: ${C.cyan}; box-shadow: 0 0 8px ${C.cyan}80; cursor: ns-resize; } .akp-grid { display: grid; grid-template-columns: 1fr 240px; gap: 16px; max-width: 900px; margin: 0 auto; } @media (max-width: 640px) { .akp-grid { grid-template-columns: 1fr !important; } }`}</style>
 
       <div style={s.header}>
         <div style={s.logo}>KRAZYCARMA</div>
@@ -546,7 +549,7 @@ function KrazyCarmaMasterInner() {
         </div>
       )}
 
-      <div style={s.grid}>
+      <div className="akp-grid">
         {/* LEFT COLUMN */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
@@ -557,7 +560,7 @@ function KrazyCarmaMasterInner() {
               style={s.dropzone}
               onDrop={onDrop}
               onDragOver={e => e.preventDefault()}
-              onClick={() => { const i = document.createElement('input'); i.type='file'; i.accept='audio/*'; i.onchange=(e)=>{ const target = e.target as HTMLInputElement; if(target.files?.[0]) loadFile(target.files[0]); }; i.click(); }}
+              onClick={() => { const i = document.createElement('input'); i.type='file'; i.accept='audio/*'; i.style.display='none'; i.onchange=(e)=>{ const target = e.target as HTMLInputElement; if(target.files?.[0]) loadFile(target.files[0]); document.body.removeChild(i); }; document.body.appendChild(i); i.click(); }}
             >
               {file ? (
                 <div>
