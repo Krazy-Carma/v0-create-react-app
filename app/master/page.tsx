@@ -576,7 +576,7 @@ function KrazyCarmaMasterInner() {
               ref={fileInputRef}
               id="akp-file-input"
               type="file"
-              accept="audio/*"
+              accept="audio/*,.mp3,.wav,.flac,.aac,.ogg,.m4a,.aif,.aiff,.opus,.wma"
               style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden', zIndex: -1 }}
               onChange={(e) => { if (e.target.files?.[0]) { loadFile(e.target.files[0]); e.target.value = ''; } }}
             />
