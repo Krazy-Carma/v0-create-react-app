@@ -1,6 +1,6 @@
 "use client";
 export const dynamic = 'force-dynamic';
-import { useState, useRef, useCallback, useEffect, Suspense } from "react";
+import { useState, useRef, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 const C = {
@@ -246,13 +246,10 @@ function KrazyCarmaMasterInner() {
   const satDryRef = useRef<GainNode | null>(null);
   const specAnalyserRef = useRef<AnalyserNode | null>(null);
 
-  const initAudio = useCallback(async (arrayBuf: ArrayBuffer) => {
-    if (audioCtxRef.current) audioCtxRef.current.close();
-    const ctx = new AudioContext();
-    audioCtxRef.current = ctx;
-    const decoded = await ctx.decodeAudioData(arrayBuf);
-    bufferRef.current = decoded;
-
+  // Build the live signal chain on an already-created AudioContext.
+  // Called synchronously inside togglePlay so the AudioContext is created
+  // before any await, preserving the iOS user-gesture requirement.
+  const buildLiveChain = (ctx: AudioContext) => {
     const splitter = ctx.createChannelSplitter(2);
     const merger = ctx.createChannelMerger(2);
     mergerRef.current = merger;
@@ -264,9 +261,7 @@ function KrazyCarmaMasterInner() {
 
     const eqChain = EQ_BANDS.map((b, i) => {
       const f = ctx.createBiquadFilter();
-      f.type = b.type;
-      f.frequency.value = b.freq;
-      f.Q.value = b.q;
+      f.type = b.type; f.frequency.value = b.freq; f.Q.value = b.q;
       f.gain.value = eqBands[i].gain;
       return f;
     });
@@ -274,69 +269,57 @@ function KrazyCarmaMasterInner() {
     for (let i = 0; i < eqChain.length - 1; i++) eqChain[i].connect(eqChain[i + 1]);
 
     const compNode = ctx.createDynamicsCompressor();
-    compNode.threshold.value = comp.threshold;
-    compNode.ratio.value = comp.ratio;
-    compNode.attack.value = comp.attack / 1000;
-    compNode.release.value = comp.release / 1000;
+    compNode.threshold.value = comp.threshold; compNode.ratio.value = comp.ratio;
+    compNode.attack.value = comp.attack / 1000; compNode.release.value = comp.release / 1000;
     compNodeRef.current = compNode;
 
     const gainNode = ctx.createGain();
     gainNode.gain.value = Math.pow(10, comp.makeup / 20);
     gainNodeRef.current = gainNode;
 
-    // Saturation (waveshaper with dry/wet mix)
     const curve = new Float32Array(256);
     for (let i = 0; i < 256; i++) {
-      const x = (i * 2) / 256 - 1;
-      const k = satDrive * 2;
+      const x = (i * 2) / 256 - 1; const k = satDrive * 2;
       curve[i] = k > 0 ? ((3 + k) * x * 20) / (Math.PI + k * Math.abs(x)) : x;
     }
     const satWS = ctx.createWaveShaper(); satWS.curve = curve; satWS.oversample = '4x'; satWaveShaperRef.current = satWS;
     const satWet = ctx.createGain(); satWet.gain.value = satMix / 100; satGainRef.current = satWet;
     const satDry = ctx.createGain(); satDry.gain.value = 1 - satMix / 100; satDryRef.current = satDry;
 
-    // Limiter (brick-wall)
     const limiter = ctx.createDynamicsCompressor();
-    limiter.threshold.value = limiterThreshold;
-    limiter.knee.value = 0;
-    limiter.ratio.value = 20;
-    limiter.attack.value = 0.001;
+    limiter.threshold.value = limiterThreshold; limiter.knee.value = 0;
+    limiter.ratio.value = 20; limiter.attack.value = 0.001;
     limiter.release.value = limiterRelease / 1000;
     limiterRef.current = limiter;
 
-    // Spectrum analyser (for visualisation)
     const specAnalyser = ctx.createAnalyser();
-    specAnalyser.fftSize = 2048;
-    specAnalyserRef.current = specAnalyser;
+    specAnalyser.fftSize = 2048; specAnalyserRef.current = specAnalyser;
 
     merger.connect(eqChain[0]);
     eqChain[eqChain.length - 1].connect(compNode);
     compNode.connect(gainNode);
-    // Saturation parallel dry/wet
-    gainNode.connect(satDry);
-    gainNode.connect(satWS);
-    satWS.connect(satWet);
-    satDry.connect(limiter);
-    satWet.connect(limiter);
-    limiter.connect(specAnalyser);
-    specAnalyser.connect(ctx.destination);
+    gainNode.connect(satDry); gainNode.connect(satWS); satWS.connect(satWet);
+    satDry.connect(limiter); satWet.connect(limiter);
+    limiter.connect(specAnalyser); specAnalyser.connect(ctx.destination);
 
-    return { ctx, splitter, decoded };
-  }, [comp.attack, comp.makeup, comp.ratio, comp.release, comp.threshold, eqBands, satDrive, satMix, limiterThreshold, limiterRelease]);
+    return splitter;
+  };
 
   const loadFile = async (f: File) => {
     setUploadError('');
+    try { sourceRef.current?.stop(); } catch(_) {}
+    sourceRef.current = null;
+    if (audioCtxRef.current) { audioCtxRef.current.close(); audioCtxRef.current = null; }
+    setFile(null); setFileName(''); setPlaying(false); setExpProg(0); setAiAnalysis(null);
     try {
+      const ab = await f.arrayBuffer();
+      // OfflineAudioContext decodes without needing a user gesture
+      const probe = new OfflineAudioContext(2, 1, 44100);
+      bufferRef.current = await probe.decodeAudioData(ab);
       setFile(f);
       setFileName(f.name);
-      setPlaying(false);
-      setExpProg(0);
-      setAiAnalysis(null);
-      const ab = await f.arrayBuffer();
-      await initAudio(ab.slice(0));
     } catch (err) {
-      setFile(null);
-      setFileName('');
+      bufferRef.current = null;
       const msg = err instanceof Error ? err.message : String(err);
       setUploadError(`Could not load audio: ${msg}. Try a WAV or MP3 file.`);
     }
@@ -348,24 +331,27 @@ function KrazyCarmaMasterInner() {
     if (f && (f.type.startsWith('audio/') || f.name.match(/\.(mp3|wav|flac|aac|ogg|m4a)$/i))) loadFile(f);
   };
 
-  const togglePlay = async () => {
-    if (!bufferRef.current || !file) return;
+  // Synchronous — AudioContext created before any await to satisfy iOS gesture requirement
+  const togglePlay = () => {
+    if (!bufferRef.current) return;
     if (playing) {
-      if (sourceRef.current) { sourceRef.current.stop(); sourceRef.current = null; }
-      setPlaying(false);
-      cancelAnimationFrame(animRef.current);
-      setLevL(0); setLevR(0);
+      try { sourceRef.current?.stop(); } catch(_) {}
+      sourceRef.current = null;
+      audioCtxRef.current?.close(); audioCtxRef.current = null;
+      setPlaying(false); cancelAnimationFrame(animRef.current); setLevL(0); setLevR(0);
       return;
     }
-
     if (audioCtxRef.current) audioCtxRef.current.close();
-    const ab = await file.arrayBuffer();
-    const { ctx: newCtx, splitter } = await initAudio(ab);
-    const newSrc = newCtx.createBufferSource();
-    newSrc.buffer = bufferRef.current;
-    newSrc.connect(splitter);
-    newSrc.start();
-    sourceRef.current = newSrc;
+    const ctx = new AudioContext();
+    audioCtxRef.current = ctx;
+    ctx.resume(); // synchronous call — keeps iOS gesture context alive
+
+    const splitter = buildLiveChain(ctx);
+    const src = ctx.createBufferSource();
+    src.buffer = bufferRef.current!;
+    src.connect(splitter);
+    src.start();
+    sourceRef.current = src;
     setPlaying(true);
 
     const tick = () => {
@@ -374,14 +360,12 @@ function KrazyCarmaMasterInner() {
       const dR = new Uint8Array(analyserRRef.current.frequencyBinCount);
       analyserLRef.current.getByteFrequencyData(dL);
       analyserRRef.current.getByteFrequencyData(dR);
-      const avgL = dL.reduce((a,b)=>a+b,0)/dL.length/255*100;
-      const avgR = dR.reduce((a,b)=>a+b,0)/dR.length/255*100;
-      setLevL(avgL); setLevR(avgR);
+      setLevL(dL.reduce((a,b)=>a+b,0)/dL.length/255*100);
+      setLevR(dR.reduce((a,b)=>a+b,0)/dR.length/255*100);
       animRef.current = requestAnimationFrame(tick);
     };
     tick();
-
-    newSrc.onended = () => { setPlaying(false); setLevL(0); setLevR(0); cancelAnimationFrame(animRef.current); };
+    src.onended = () => { setPlaying(false); setLevL(0); setLevR(0); cancelAnimationFrame(animRef.current); };
   };
 
   const applyPreset = (key: string) => {
@@ -682,30 +666,31 @@ function KrazyCarmaMasterInner() {
             <div style={s.sectionTitle}><span style={s.dot(C.cyan)} />INPUT TRACK</div>
             <input
               ref={fileInputRef}
+              id="kc-file-input"
               type="file"
-              accept=".mp3,.wav,.flac,.aac,.ogg,.m4a,audio/mpeg,audio/wav,audio/flac,audio/aac,audio/ogg,audio/mp4,audio/x-m4a"
-              style={{ display: 'none' }}
+              accept=".mp3,.wav,.flac,.aac,.ogg,.m4a"
+              style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden' }}
               onChange={e => { const f = e.target.files?.[0]; if (f) loadFile(f); e.target.value = ''; }}
             />
-            <div
-              style={s.dropzone}
+            <label
+              htmlFor="kc-file-input"
+              style={{ ...s.dropzone, display: 'block' }}
               onDrop={onDrop}
               onDragOver={e => e.preventDefault()}
-              onClick={() => fileInputRef.current?.click()}
             >
               {file ? (
                 <div>
                   <div style={{ fontSize: 13, color: C.cyan, marginBottom: 4 }}>{'✓'} {fileName}</div>
-                  <div style={{ fontSize: 10, color: C.muted }}>Click to replace</div>
+                  <div style={{ fontSize: 10, color: C.muted }}>Tap to replace</div>
                 </div>
               ) : (
                 <div>
                   <div style={{ fontSize: 28, marginBottom: 8 }}>{'🎵'}</div>
-                  <div style={{ fontSize: 12, color: C.text, marginBottom: 4 }}>Drop audio file here or click to browse</div>
+                  <div style={{ fontSize: 12, color: C.text, marginBottom: 4 }}>Tap to browse or drop a file</div>
                   <div style={{ fontSize: 10, color: C.muted }}>{'MP3 · WAV · FLAC · AAC · OGG · M4A'}</div>
                 </div>
               )}
-            </div>
+            </label>
             {uploadError && (
               <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 6, border: '1px solid rgba(255,80,80,0.4)', background: 'rgba(255,80,80,0.06)', color: '#ff6060', fontSize: 11 }}>
                 {uploadError}
