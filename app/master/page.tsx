@@ -209,8 +209,13 @@ function KrazyCarmaMasterInner() {
   const [isSubscriber, setIsSubscriber] = useState(false);
   const [usageLoaded, setUsageLoaded] = useState(false);
   const [outOfUses, setOutOfUses] = useState(false);
+  const [isInIframe, setIsInIframe] = useState(false);
   const params = useSearchParams();
   const cid = params.get('cid');
+
+  useEffect(() => {
+    try { setIsInIframe(window.self !== window.top); } catch { setIsInIframe(true); }
+  }, []);
 
   useEffect(() => {
     if (!cid) { setUsageLoaded(true); return; }
@@ -539,6 +544,16 @@ function KrazyCarmaMasterInner() {
           </div>
         )}
       </div>
+
+      {isInIframe && (
+        <div style={{ maxWidth: 900, margin: '0 auto 16px', padding: '12px 16px', borderRadius: 10, border: `1px solid ${C.cyan}`, background: 'rgba(0,229,255,0.06)', textAlign: 'center' }}>
+          <div style={{ fontSize: 10, color: C.muted, marginBottom: 8, letterSpacing: '0.1em' }}>For full mobile functionality including file upload, open in full screen</div>
+          <a href="https://akp-mastery-tool.vercel.app/master" target="_blank" rel="noreferrer"
+            style={{ display: 'inline-block', padding: '10px 24px', background: `linear-gradient(135deg, rgba(0,229,255,0.15), rgba(57,255,20,0.15))`, border: `1px solid ${C.cyan}`, borderRadius: 8, color: C.cyan, fontFamily: "'Orbitron', sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: '0.15em', textDecoration: 'none', boxShadow: `0 0 16px ${C.cyan}30` }}>
+            ↗ OPEN FULL SCREEN
+          </a>
+        </div>
+      )}
 
       {outOfUses && (
         <div style={{ maxWidth: 900, margin: '0 auto 20px', padding: 24, borderRadius: 12, border: '1px solid rgba(255,80,80,0.4)', background: 'rgba(255,80,80,0.06)', textAlign: 'center' }}>
