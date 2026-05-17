@@ -105,11 +105,29 @@ function Knob({ value, min, max, onChange, color = C.cyan, size = 56, label }: K
     window.addEventListener('mouseup', onUp);
   };
 
+  const onTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault();
+    startY.current = e.touches[0].clientY;
+    startVal.current = value;
+    const onMove = (ev: TouchEvent) => {
+      const dy = startY.current! - ev.touches[0].clientY;
+      const range = max - min;
+      const newVal = Math.min(max, Math.max(min, startVal.current! + (dy / 100) * range));
+      onChange(newVal);
+    };
+    const onUp = () => {
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
+    };
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onUp);
+  };
+
   const colorRgb = color === C.cyan ? '0,229,255' : color === C.pink ? '57,255,20' : color === C.lime ? '179,255,0' : '170,68,255';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-      <svg width={size} height={size} viewBox="0 0 56 56" style={{ cursor: 'ns-resize', userSelect: 'none' }} onMouseDown={onMouseDown}>
+      <svg width={size} height={size} viewBox="0 0 56 56" style={{ cursor: 'ns-resize', userSelect: 'none', touchAction: 'none' }} onMouseDown={onMouseDown} onTouchStart={onTouchStart}>
         <circle cx="28" cy="28" r="24" fill="rgba(0,0,0,0.5)" stroke="rgba(255,255,255,0.08)" strokeWidth="1.5" />
         <circle cx="28" cy="28" r="20" fill={`rgba(${colorRgb},0.07)`} />
         <path d={describeArc(28,28,18,-135,135)} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="2.5" strokeLinecap="round"/>
