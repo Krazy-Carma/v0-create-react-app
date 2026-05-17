@@ -225,6 +225,7 @@ function KrazyCarmaMasterInner() {
       .catch(() => setUsageLoaded(true));
   }, [cid]);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const bufferRef = useRef<AudioBuffer | null>(null);
@@ -556,25 +557,33 @@ function KrazyCarmaMasterInner() {
           {/* File Upload */}
           <div style={s.panel}>
             <div style={s.sectionTitle}><span style={s.dot(C.cyan)} />INPUT TRACK</div>
-            <div
-              style={s.dropzone}
+            <input
+              ref={fileInputRef}
+              id="akp-file-input"
+              type="file"
+              accept="audio/*"
+              style={{ display: 'none' }}
+              onChange={(e) => { if (e.target.files?.[0]) { loadFile(e.target.files[0]); e.target.value = ''; } }}
+            />
+            <label
+              htmlFor="akp-file-input"
+              style={{ ...s.dropzone, display: 'block' }}
               onDrop={onDrop}
-              onDragOver={e => e.preventDefault()}
-              onClick={() => { const i = document.createElement('input'); i.type='file'; i.accept='audio/*'; i.style.display='none'; i.onchange=(e)=>{ const target = e.target as HTMLInputElement; if(target.files?.[0]) loadFile(target.files[0]); document.body.removeChild(i); }; document.body.appendChild(i); i.click(); }}
+              onDragOver={(e: React.DragEvent) => e.preventDefault()}
             >
               {file ? (
                 <div>
                   <div style={{ fontSize: 13, color: C.cyan, marginBottom: 4 }}>{'✓'} {fileName}</div>
-                  <div style={{ fontSize: 10, color: C.muted }}>Click to replace</div>
+                  <div style={{ fontSize: 10, color: C.muted }}>Tap to replace</div>
                 </div>
               ) : (
                 <div>
                   <div style={{ fontSize: 28, marginBottom: 8 }}>{'🎵'}</div>
-                  <div style={{ fontSize: 12, color: C.text, marginBottom: 4 }}>Drop audio file here</div>
+                  <div style={{ fontSize: 12, color: C.text, marginBottom: 4 }}>Tap or drop audio file</div>
                   <div style={{ fontSize: 10, color: C.muted }}>{'MP3 · WAV · FLAC · AAC · OGG'}</div>
                 </div>
               )}
-            </div>
+            </label>
 
             {file && (
               <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 14 }}>
