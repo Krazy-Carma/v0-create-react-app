@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic';
 import { useState, useRef, useCallback, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import { analyzeAudioFile, type PresetKey } from "@/lib/audio-analyzer";
 
 const C = {
   bg: 'transparent',
@@ -362,23 +363,38 @@ function KrazyCarmaMasterInner() {
     if (!file) return;
     setAnalyzing(true);
     setAiAnalysis(null);
-    // Simulate AI analysis with preset recommendation
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    const genres = ['Electronic', 'Hip Hop', 'Pop', 'Rock', 'Ambient', 'Jazz'];
-    const presets = Object.keys(AI_PRESETS);
-    const randomGenre = genres[Math.floor(Math.random() * genres.length)];
-    const randomPreset = presets[Math.floor(Math.random() * presets.length)];
-    setAiAnalysis({
-      genre: randomGenre,
-      recommendedPreset: randomPreset,
-      eqTips: 'Consider a slight boost at 3kHz for presence and clarity.',
-      compTips: 'Use moderate compression (3-4:1) to maintain dynamics while adding punch.',
-      stereoTips: 'Widen the stereo image slightly for a more immersive mix.',
-      loudnessTips: 'Target -14 LUFS for streaming platforms like Spotify.',
-      summary: `Based on the track "${fileName}", we recommend the ${AI_PRESETS[randomPreset].name} preset for optimal results. This will enhance clarity while maintaining the natural dynamics of your mix.`
-    });
-    setActivePreset(randomPreset);
-    setAnalyzing(false);
+    try {
+      // Real Web Audio API analysis — peak, RMS, LUFS, crest factor,
+      // spectral bands, stereo width, tempo estimation. No randomness.
+      const result = await analyzeAudioFile(file);
+      const { features, recommendedPreset, reasoning, eqTip, compTip, stereoTip, loudnessTip } = result;
+      const presetKey = recommendedPreset as PresetKey;
+      const presetName = AI_PRESETS[presetKey].name;
+
+      // Build a short "genre" descriptor from real spectral characteristics
+      // rather than picking one out of a hat.
+      const bpmPart = features.estimatedBpm ? `, ~${features.estimatedBpm} BPM` : '';
+      const genreLabel = `${features.toneDescriptor}${bpmPart}`;
+
+      setAiAnalysis({
+        genre: genreLabel,
+        recommendedPreset: presetKey,
+        eqTips: eqTip,
+        compTips: compTip,
+        stereoTips: stereoTip,
+        loudnessTips: loudnessTip,
+        summary: `Analyzed "${fileName}" (${features.durationSec.toFixed(1)}s, ${features.lufs.toFixed(1)} LUFS, ${features.crestFactorDb.toFixed(1)} dB crest factor). Recommending ${presetName} — ${reasoning}.`,
+      });
+      setActivePreset(presetKey);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Analysis failed';
+      setAiAnalysis({
+        genre: 'Unknown',
+        summary: `Could not analyze "${fileName}": ${msg}. Try a different audio file.`,
+      });
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   const exportMaster = async () => {
