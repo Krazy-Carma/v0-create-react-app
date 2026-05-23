@@ -220,7 +220,8 @@ function KrazyCarmaMasterInner() {
 
   useEffect(() => {
     if (!cid) { setUsageLoaded(true); return; }
-    fetch()
+    const apiBase = process.env.NEXT_PUBLIC_AKP_API_BASE || 'https://akp-platform.vercel.app';
+    fetch(`${apiBase}/api/believer/usage?cid=${encodeURIComponent(cid)}`)
       .then(r => r.json())
       .then(d => {
         setIsSubscriber(d.isSubscriber ?? false);
@@ -402,10 +403,11 @@ function KrazyCarmaMasterInner() {
     if (outOfUses) return;
     // Record the use before exporting
     if (cid && !isSubscriber && usesLeft !== null) {
-      const res = await fetch('/api/record-use', {
+      const apiBase = process.env.NEXT_PUBLIC_AKP_API_BASE || 'https://akp-platform.vercel.app';
+      const res = await fetch(`${apiBase}/api/believer/record-use`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cid, usesLeft }),
+        body: JSON.stringify({ cid }),
       }).then(r => r.json()).catch(() => null);
       if (res?.ok) setUsesLeft(res.usesLeft);
       if (res?.usesLeft === 0) setOutOfUses(true);
