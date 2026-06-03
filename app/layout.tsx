@@ -7,25 +7,31 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'KrazyCarma | Professional Audio Mastering',
-  description: 'Professional audio mastering engine — EQ, compression, stereo widening, AI analysis, and export.',
+  title: 'ADP | Professional Audio Mastering',
+  description: 'Artist Development Platform — Professional audio mastering engine with EQ, compression, limiting, saturation, and AI analysis.',
   generator: 'krazycarma',
   icons: {
     icon: [
       {
         url: '/icon-light-32x32.png',
         media: '(prefers-color-scheme: light)',
+        sizes: '32x32',
+        type: 'image/png',
       },
       {
         url: '/icon-dark-32x32.png',
         media: '(prefers-color-scheme: dark)',
+        sizes: '32x32',
+        type: 'image/png',
       },
       {
         url: '/icon.svg',
         type: 'image/svg+xml',
       },
     ],
-    apple: '/apple-icon.png',
+    apple: [
+      { url: '/apple-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
   },
 }
 
