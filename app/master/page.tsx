@@ -427,7 +427,7 @@ function KrazyCarmaMasterInner() {
     const merger = fullCtx.createChannelMerger(2);
     src.connect(splitter);
     splitter.connect(merger, 0, 0);
-    splitter.connect(merger, 0, 1);
+    splitter.connect(merger, 1, 1);
 
     const eq = EQ_BANDS.map((b, i) => {
       const f = fullCtx.createBiquadFilter();
