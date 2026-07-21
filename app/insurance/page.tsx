@@ -205,30 +205,32 @@ export default function InsuranceQuoteTool() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
-      <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
+      <div className="max-w-6xl mx-auto px-3 py-4 sm:p-8 space-y-4 sm:space-y-6">
         <header className="text-center space-y-2">
-          <h1 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-slate-50">
-            Grandma&apos;s Insurance Quote Helper
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 dark:text-slate-50">
+            Insurance Quote Helper
           </h1>
-          <p className="text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
-            Compare insurance options and find the best deal. Currently paying{" "}
+          <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
+            Compare options and find a better deal. Currently paying{" "}
             <span className="font-semibold text-red-600">$100+/month</span> with Progressive.
           </p>
         </header>
 
         <Card className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
           <CardContent className="pt-6">
-            <div className="flex items-center gap-3 flex-wrap">
-              <Badge className="bg-green-600 text-white">Top Pick</Badge>
-              <span className="text-2xl font-bold text-green-700 dark:text-green-300">
-                {bestOption.name}
-              </span>
-              <span className="text-slate-600 dark:text-slate-400">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge className="bg-green-600 text-white">Top Pick</Badge>
+                <span className="text-xl sm:text-2xl font-bold text-green-700 dark:text-green-300">
+                  {bestOption.name}
+                </span>
+              </div>
+              <span className="text-sm sm:text-base text-slate-600 dark:text-slate-400">
                 ~${getEffectiveMonthly(bestOption)}/mo
-                {getActualQuote(bestOption.name) ? " (actual quote)" : " (estimated)"}
+                {getActualQuote(bestOption.name) ? " (actual)" : " (est.)"}
               </span>
-              <span className="ml-auto text-sm text-green-600 dark:text-green-400 font-medium">
-                Save ~${CURRENT_PROGRESSIVE.monthly - getEffectiveMonthly(bestOption)}/mo vs Progressive
+              <span className="sm:ml-auto text-sm text-green-600 dark:text-green-400 font-medium">
+                Save ~${CURRENT_PROGRESSIVE.monthly - getEffectiveMonthly(bestOption)}/mo
                 {" "}(${(CURRENT_PROGRESSIVE.monthly - getEffectiveMonthly(bestOption)) * 12}/yr)
               </span>
             </div>
@@ -236,12 +238,12 @@ export default function InsuranceQuoteTool() {
         </Card>
 
         <Tabs defaultValue="compare" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="compare">Compare</TabsTrigger>
-            <TabsTrigger value="details">Details</TabsTrigger>
-            <TabsTrigger value="quotes">My Quotes ({quotes.length})</TabsTrigger>
-            <TabsTrigger value="call-script">Call Script</TabsTrigger>
-            <TabsTrigger value="tips">Tips</TabsTrigger>
+          <TabsList className="flex w-full overflow-x-auto">
+            <TabsTrigger value="compare" className="flex-1 min-w-fit text-xs sm:text-sm px-2 sm:px-4">Compare</TabsTrigger>
+            <TabsTrigger value="details" className="flex-1 min-w-fit text-xs sm:text-sm px-2 sm:px-4">Details</TabsTrigger>
+            <TabsTrigger value="quotes" className="flex-1 min-w-fit text-xs sm:text-sm px-2 sm:px-4">Quotes ({quotes.length})</TabsTrigger>
+            <TabsTrigger value="call-script" className="flex-1 min-w-fit text-xs sm:text-sm px-2 sm:px-4">Script</TabsTrigger>
+            <TabsTrigger value="tips" className="flex-1 min-w-fit text-xs sm:text-sm px-2 sm:px-4">Tips</TabsTrigger>
           </TabsList>
 
           <TabsContent value="compare" className="space-y-4">
@@ -254,7 +256,55 @@ export default function InsuranceQuoteTool() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto">
+                {/* Mobile card layout */}
+                <div className="sm:hidden space-y-3">
+                  <div className="border rounded-lg p-3 bg-red-50 dark:bg-red-950/30">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-slate-500">Progressive</span>
+                        <Badge variant="destructive" className="text-xs">Current</Badge>
+                      </div>
+                      <span className="font-bold text-red-600 text-lg">$100+/mo</span>
+                    </div>
+                  </div>
+                  {sortedEstimates.map((est, idx) => {
+                    const actual = getActualQuote(est.name)
+                    const monthly = getEffectiveMonthly(est)
+                    const savingsMonthly = CURRENT_PROGRESSIVE.monthly - monthly
+                    return (
+                      <div
+                        key={est.name}
+                        className={`border rounded-lg p-3 cursor-pointer transition-colors ${
+                          idx === 0
+                            ? "border-green-300 bg-green-50 dark:border-green-700 dark:bg-green-950/30"
+                            : "hover:bg-slate-50 dark:hover:bg-slate-800"
+                        }`}
+                        onClick={() => setSelectedInsurer(selectedInsurer === est.name ? null : est.name)}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-sm">{est.name}</span>
+                            {idx === 0 && <Badge className="bg-green-600 text-white text-xs">Best</Badge>}
+                            {actual && <Badge variant="secondary" className="text-xs">Actual</Badge>}
+                          </div>
+                          <span className="text-lg font-bold text-slate-900 dark:text-slate-50">${monthly}/mo</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-slate-500">
+                            {!actual ? `Est. $${est.estimatedRange[0]}–$${est.estimatedRange[1]}` : est.coverageType}
+                          </span>
+                          <span className="text-sm font-medium text-green-600">
+                            Save ${savingsMonthly}/mo
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">{est.bestFor}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Desktop table layout */}
+                <div className="hidden sm:block overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b">
@@ -329,8 +379,7 @@ export default function InsuranceQuoteTool() {
                   </table>
                 </div>
                 <p className="text-xs text-slate-400 mt-3">
-                  Click any row for details. Estimates are based on typical Kansas rates for this driver/vehicle profile.
-                  Enter actual quotes in the &quot;My Quotes&quot; tab to see exact numbers.
+                  Tap any option for details. Estimates based on typical Kansas rates for this profile.
                 </p>
               </CardContent>
             </Card>
@@ -423,10 +472,10 @@ export default function InsuranceQuoteTool() {
                 <CardDescription>What we&apos;re trying to beat</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center gap-4 flex-wrap">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-slate-500">Monthly:</span>
-                    <Badge variant="destructive" className="text-lg px-3 py-1">$100+/month</Badge>
+                    <Badge variant="destructive" className="text-base sm:text-lg px-3 py-1">$100+/month</Badge>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-slate-500">Discounts:</span>
@@ -434,7 +483,7 @@ export default function InsuranceQuoteTool() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-slate-500">Target:</span>
-                    <Badge className="bg-green-600 text-white text-lg px-3 py-1">$50–$70/month</Badge>
+                    <Badge className="bg-green-600 text-white text-base sm:text-lg px-3 py-1">$50–$70/month</Badge>
                   </div>
                 </div>
               </CardContent>
@@ -813,9 +862,9 @@ function SelectedInsurerDetail({
   return (
     <Card className="border-blue-200 dark:border-blue-800">
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <CardTitle className="text-lg">{estimate.name}</CardTitle>
-          <div className="text-right">
+          <div className="sm:text-right">
             <p className="text-2xl font-bold">${monthly}/mo</p>
             <p className="text-sm text-green-600">Save ${currentMonthly - monthly}/mo vs Progressive</p>
           </div>
@@ -888,9 +937,9 @@ function SelectedInsurerDetail({
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between items-center text-sm">
-      <span className="text-slate-500">{label}</span>
-      <span className="font-medium text-slate-900 dark:text-slate-100 font-mono text-xs">{value}</span>
+    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-0.5 sm:gap-2 text-sm py-1 border-b border-slate-100 dark:border-slate-800 last:border-0">
+      <span className="text-slate-500 text-xs sm:text-sm">{label}</span>
+      <span className="font-medium text-slate-900 dark:text-slate-100 font-mono text-sm break-all">{value}</span>
     </div>
   )
 }
