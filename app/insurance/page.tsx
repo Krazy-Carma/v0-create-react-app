@@ -24,6 +24,20 @@ interface Quote {
   rating: string
 }
 
+interface InsurerEstimate {
+  name: string
+  phone: string
+  website: string
+  estimatedMonthly: number
+  estimatedRange: [number, number]
+  coverageType: string
+  availableDiscounts: string[]
+  pros: string[]
+  cons: string[]
+  howToGet: string
+  bestFor: string
+}
+
 const DRIVER_INFO = {
   name: "Grandma",
   age: 74,
@@ -44,16 +58,102 @@ const VEHICLE_INFO = {
   coverageType: "Standard liability only",
 }
 
-const TARGET_INSURERS = [
-  { name: "GEICO", phone: "1-800-861-8380", website: "geico.com", notes: "Online quotes available, often competitive for clean records" },
-  { name: "State Farm", phone: "Find local agent", website: "statefarm.com", notes: "Strong in Kansas, agent-based — ask for multi-policy discounts" },
-  { name: "Travelers", phone: "Find local agent", website: "travelers.com", notes: "Good for mature drivers, ask about IntelliDrive discount" },
-  { name: "Kansas Farm Bureau", phone: "Find local agent", website: "kfb.org", notes: "Kansas-specific, often best rates for rural/local drivers" },
+const INSURER_ESTIMATES: InsurerEstimate[] = [
+  {
+    name: "Kansas Farm Bureau",
+    phone: "Find local agent at kfb.org",
+    website: "kfb.org",
+    estimatedMonthly: 52,
+    estimatedRange: [45, 60],
+    coverageType: "25/50/25 Liability",
+    availableDiscounts: ["Defensive driving (5-10%)", "Low mileage", "Multi-policy bundle (home+auto)", "Pay-in-full (5-8%)"],
+    pros: [
+      "Kansas-specific — built for KS drivers and pricing",
+      "Best rates for rural/local driving profiles",
+      "Local agents who know the area",
+      "Often cheapest for older vehicles with liability only",
+    ],
+    cons: [
+      "Must contact local agent (no online quotes)",
+      "Only available in Kansas",
+    ],
+    howToGet: "Visit kfb.org to find your nearest local agent and call for a quote",
+    bestFor: "Best overall value for a Kansas driver with local driving and a clean record",
+  },
+  {
+    name: "GEICO",
+    phone: "1-800-861-8380",
+    website: "geico.com",
+    estimatedMonthly: 58,
+    estimatedRange: [50, 68],
+    coverageType: "25/50/25 Liability",
+    availableDiscounts: ["Defensive driving (5-10%)", "5-year good driver (up to 26%)", "Federal employee/military", "Pay-in-full"],
+    pros: [
+      "Get a quote online in 10 minutes — no phone call needed",
+      "Strong discounts for long clean records",
+      "Low overhead = lower prices",
+      "Easy to manage policy online",
+    ],
+    cons: [
+      "No local agent — support is phone/online only",
+      "May not bundle as well if grandma has homeowner's insurance elsewhere",
+    ],
+    howToGet: "Visit geico.com or call 1-800-861-8380 for an instant quote",
+    bestFor: "Best if you want a quick online quote without calling anyone",
+  },
+  {
+    name: "State Farm",
+    phone: "Find local agent at statefarm.com",
+    website: "statefarm.com",
+    estimatedMonthly: 63,
+    estimatedRange: [55, 72],
+    coverageType: "25/50/25 Liability",
+    availableDiscounts: ["Defensive driving (10-15%)", "Steer Clear (mature driver)", "Multi-policy bundle (15-20%)", "Loyalty discount"],
+    pros: [
+      "Largest insurer in Kansas — strong local presence",
+      "Best multi-policy discounts (home + auto saves 15-20%)",
+      "Local agent handles everything for you",
+      "Strong claims support with in-person help",
+    ],
+    cons: [
+      "Slightly higher base rates than GEICO/Farm Bureau",
+      "Best savings require bundling home insurance",
+    ],
+    howToGet: "Visit statefarm.com to find a local agent, or call the agent directly",
+    bestFor: "Best if grandma wants a local agent and can bundle with homeowner's insurance",
+  },
+  {
+    name: "Travelers",
+    phone: "Find local agent at travelers.com",
+    website: "travelers.com",
+    estimatedMonthly: 67,
+    estimatedRange: [58, 75],
+    coverageType: "25/50/25 Liability",
+    availableDiscounts: ["Defensive driving", "IntelliDrive (usage-based, up to 20%)", "Multi-policy", "Prior insurance loyalty", "Pay-in-full"],
+    pros: [
+      "IntelliDrive program could save up to 20% for low-mileage local driving",
+      "Good mature driver discounts",
+      "Strong financial stability rating",
+    ],
+    cons: [
+      "Higher base rates than Kansas-specific insurers",
+      "IntelliDrive requires a monitoring device in the van",
+      "Less Kansas-specific than Farm Bureau or State Farm",
+    ],
+    howToGet: "Visit travelers.com to find a local independent agent",
+    bestFor: "Worth trying if grandma is open to a usage-based monitoring discount",
+  },
 ]
+
+const CURRENT_PROGRESSIVE = {
+  monthly: 100,
+  annual: 1200,
+}
 
 export default function InsuranceQuoteTool() {
   const [quotes, setQuotes] = useState<Quote[]>([])
   const [showAddForm, setShowAddForm] = useState(false)
+  const [selectedInsurer, setSelectedInsurer] = useState<string | null>(null)
   const [newQuote, setNewQuote] = useState<Omit<Quote, "id">>({
     insurer: "",
     monthlyPremium: "",
@@ -87,13 +187,21 @@ export default function InsuranceQuoteTool() {
     setQuotes(quotes.filter((q) => q.id !== id))
   }
 
-  const bestQuote = quotes.length > 0
-    ? quotes.reduce((best, q) => {
-        const bestNum = parseFloat(best.monthlyPremium.replace(/[^0-9.]/g, ""))
-        const qNum = parseFloat(q.monthlyPremium.replace(/[^0-9.]/g, ""))
-        return qNum < bestNum ? q : best
-      })
-    : null
+  const getActualQuote = (insurerName: string) => {
+    return quotes.find((q) => q.insurer.toLowerCase().includes(insurerName.toLowerCase()))
+  }
+
+  const getEffectiveMonthly = (estimate: InsurerEstimate): number => {
+    const actual = getActualQuote(estimate.name)
+    if (actual) return parseFloat(actual.monthlyPremium.replace(/[^0-9.]/g, ""))
+    return estimate.estimatedMonthly
+  }
+
+  const sortedEstimates = [...INSURER_ESTIMATES].sort(
+    (a, b) => getEffectiveMonthly(a) - getEffectiveMonthly(b)
+  )
+
+  const bestOption = sortedEstimates[0]
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
@@ -103,36 +211,181 @@ export default function InsuranceQuoteTool() {
             Grandma&apos;s Insurance Quote Helper
           </h1>
           <p className="text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
-            Track quotes, compare prices, and find the best deal. Target: <span className="font-semibold text-green-600 dark:text-green-400">$50–$70/month</span> (currently paying $100+/month with Progressive).
+            Compare insurance options and find the best deal. Currently paying{" "}
+            <span className="font-semibold text-red-600">$100+/month</span> with Progressive.
           </p>
         </header>
 
-        {bestQuote && (
-          <Card className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3 flex-wrap">
-                <Badge className="bg-green-600 text-white">Best Quote So Far</Badge>
-                <span className="text-2xl font-bold text-green-700 dark:text-green-300">
-                  ${bestQuote.monthlyPremium.replace(/[^0-9.]/g, "")}/mo
-                </span>
-                <span className="text-slate-600 dark:text-slate-400">from {bestQuote.insurer}</span>
-                <span className="ml-auto text-sm text-green-600 dark:text-green-400 font-medium">
-                  Saving ${(100 - parseFloat(bestQuote.monthlyPremium.replace(/[^0-9.]/g, ""))).toFixed(0)}/mo vs Progressive
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        <Card className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3 flex-wrap">
+              <Badge className="bg-green-600 text-white">Top Pick</Badge>
+              <span className="text-2xl font-bold text-green-700 dark:text-green-300">
+                {bestOption.name}
+              </span>
+              <span className="text-slate-600 dark:text-slate-400">
+                ~${getEffectiveMonthly(bestOption)}/mo
+                {getActualQuote(bestOption.name) ? " (actual quote)" : " (estimated)"}
+              </span>
+              <span className="ml-auto text-sm text-green-600 dark:text-green-400 font-medium">
+                Save ~${CURRENT_PROGRESSIVE.monthly - getEffectiveMonthly(bestOption)}/mo vs Progressive
+                {" "}(${(CURRENT_PROGRESSIVE.monthly - getEffectiveMonthly(bestOption)) * 12}/yr)
+              </span>
+            </div>
+          </CardContent>
+        </Card>
 
-        <Tabs defaultValue="overview" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="quotes">Quotes ({quotes.length})</TabsTrigger>
+        <Tabs defaultValue="compare" className="space-y-4">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="compare">Compare</TabsTrigger>
+            <TabsTrigger value="details">Details</TabsTrigger>
+            <TabsTrigger value="quotes">My Quotes ({quotes.length})</TabsTrigger>
             <TabsTrigger value="call-script">Call Script</TabsTrigger>
             <TabsTrigger value="tips">Tips</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="space-y-4">
+          <TabsContent value="compare" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Side-by-Side Comparison</CardTitle>
+                <CardDescription>
+                  Estimated rates for your profile: 74-year-old, clean record, 1999 Ford Econoline, liability only, Kansas.
+                  Actual quotes you enter will replace the estimates.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-3 pr-4"></th>
+                        <th className="text-left py-3 pr-4">Monthly</th>
+                        <th className="text-left py-3 pr-4">Annual</th>
+                        <th className="text-left py-3 pr-4">vs Progressive</th>
+                        <th className="text-left py-3 pr-4">Key Discounts</th>
+                        <th className="text-left py-3">Best For</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b bg-red-50 dark:bg-red-950/30 text-slate-500">
+                        <td className="py-3 pr-4">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">Progressive</span>
+                            <Badge variant="destructive" className="text-xs">Current</Badge>
+                          </div>
+                        </td>
+                        <td className="py-3 pr-4 font-bold text-red-600">$100+</td>
+                        <td className="py-3 pr-4">$1,200+</td>
+                        <td className="py-3 pr-4">—</td>
+                        <td className="py-3 pr-4 text-xs">Defensive driving only</td>
+                        <td className="py-3 text-xs">Not competitive for this profile</td>
+                      </tr>
+                      {sortedEstimates.map((est, idx) => {
+                        const actual = getActualQuote(est.name)
+                        const monthly = getEffectiveMonthly(est)
+                        const annual = monthly * 12
+                        const savingsAnnual = CURRENT_PROGRESSIVE.annual - annual
+                        return (
+                          <tr
+                            key={est.name}
+                            className={`border-b cursor-pointer transition-colors ${
+                              idx === 0
+                                ? "bg-green-50 dark:bg-green-950/30"
+                                : "hover:bg-slate-50 dark:hover:bg-slate-800"
+                            }`}
+                            onClick={() => setSelectedInsurer(selectedInsurer === est.name ? null : est.name)}
+                          >
+                            <td className="py-3 pr-4">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold">{est.name}</span>
+                                {idx === 0 && <Badge className="bg-green-600 text-white text-xs">Best</Badge>}
+                                {actual && <Badge variant="secondary" className="text-xs">Actual</Badge>}
+                              </div>
+                            </td>
+                            <td className="py-3 pr-4">
+                              <span className="text-xl font-bold text-slate-900 dark:text-slate-50">
+                                ${monthly}
+                              </span>
+                              {!actual && (
+                                <span className="text-xs text-slate-400 block">
+                                  est. ${est.estimatedRange[0]}–${est.estimatedRange[1]}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 pr-4">${annual.toLocaleString()}</td>
+                            <td className="py-3 pr-4">
+                              <span className="font-semibold text-green-600">
+                                Save ${savingsAnnual.toLocaleString()}/yr
+                              </span>
+                            </td>
+                            <td className="py-3 pr-4 text-xs max-w-[200px]">
+                              {est.availableDiscounts.slice(0, 2).join(", ")}
+                            </td>
+                            <td className="py-3 text-xs max-w-[200px]">{est.bestFor}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-slate-400 mt-3">
+                  Click any row for details. Estimates are based on typical Kansas rates for this driver/vehicle profile.
+                  Enter actual quotes in the &quot;My Quotes&quot; tab to see exact numbers.
+                </p>
+              </CardContent>
+            </Card>
+
+            {selectedInsurer && (
+              <SelectedInsurerDetail
+                estimate={INSURER_ESTIMATES.find((e) => e.name === selectedInsurer)!}
+                actualQuote={getActualQuote(selectedInsurer) || null}
+                currentMonthly={CURRENT_PROGRESSIVE.monthly}
+              />
+            )}
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Recommendation</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="bg-green-50 dark:bg-green-950/50 border border-green-200 dark:border-green-800 rounded-lg p-4 space-y-3">
+                  <p className="text-sm text-slate-700 dark:text-slate-300">
+                    Based on your profile (74, clean record, defensive driving cert, 1999 van, liability only, Kansas),
+                    here&apos;s the recommended approach:
+                  </p>
+                  <div className="space-y-2">
+                    <RecommendationStep
+                      number={1}
+                      title="Start with Kansas Farm Bureau"
+                      text="Likely the cheapest. They specialize in Kansas drivers and are consistently the best for local/rural driving with older vehicles. Call a local agent."
+                    />
+                    <RecommendationStep
+                      number={2}
+                      title="Get a GEICO quote online"
+                      text="Takes 10 minutes at geico.com. No phone call needed. Good backup option if Farm Bureau doesn't work out."
+                    />
+                    <RecommendationStep
+                      number={3}
+                      title="Check State Farm if you can bundle"
+                      text="If grandma has homeowner's insurance, State Farm's bundle discount (15-20% off) could beat everyone else."
+                    />
+                    <RecommendationStep
+                      number={4}
+                      title="Use the best quote to negotiate"
+                      text="Once you have 2-3 quotes, call the others back and ask them to match or beat the lowest price."
+                    />
+                  </div>
+                </div>
+                <div className="text-sm text-slate-500 space-y-1">
+                  <p><strong>Expected savings:</strong> $30–$50/month ($360–$600/year) compared to Progressive</p>
+                  <p><strong>Time to complete:</strong> 1-2 weeks of phone calls, or start with GEICO online today</p>
+                  <p><strong>Important:</strong> Start the new policy BEFORE canceling Progressive — never let coverage lapse</p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="details" className="space-y-4">
             <div className="grid md:grid-cols-2 gap-4">
               <Card>
                 <CardHeader>
@@ -189,25 +442,23 @@ export default function InsuranceQuoteTool() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Insurers to Contact</CardTitle>
-                <CardDescription>Get quotes from each of these</CardDescription>
+                <CardTitle className="text-lg">Kansas Liability Minimums (25/50/25)</CardTitle>
+                <CardDescription>All quotes should meet at least these limits</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid md:grid-cols-2 gap-3">
-                  {TARGET_INSURERS.map((insurer) => (
-                    <div key={insurer.name} className="border rounded-lg p-3 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold">{insurer.name}</span>
-                        {quotes.some((q) => q.insurer.toLowerCase().includes(insurer.name.toLowerCase())) ? (
-                          <Badge className="bg-green-600 text-white">Quoted</Badge>
-                        ) : (
-                          <Badge variant="outline">Pending</Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-slate-500">{insurer.phone}</p>
-                      <p className="text-xs text-slate-400">{insurer.notes}</p>
-                    </div>
-                  ))}
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div className="border rounded-lg p-3">
+                    <p className="text-2xl font-bold text-slate-900 dark:text-slate-50">$25K</p>
+                    <p className="text-xs text-slate-500">Per person<br />bodily injury</p>
+                  </div>
+                  <div className="border rounded-lg p-3">
+                    <p className="text-2xl font-bold text-slate-900 dark:text-slate-50">$50K</p>
+                    <p className="text-xs text-slate-500">Per accident<br />bodily injury</p>
+                  </div>
+                  <div className="border rounded-lg p-3">
+                    <p className="text-2xl font-bold text-slate-900 dark:text-slate-50">$25K</p>
+                    <p className="text-xs text-slate-500">Property<br />damage</p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -215,7 +466,10 @@ export default function InsuranceQuoteTool() {
 
           <TabsContent value="quotes" className="space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-50">Collected Quotes</h2>
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-50">Actual Quotes</h2>
+                <p className="text-sm text-slate-500">Enter real quotes to replace estimates in the comparison</p>
+              </div>
               <Button onClick={() => setShowAddForm(!showAddForm)}>
                 {showAddForm ? "Cancel" : "+ Add Quote"}
               </Button>
@@ -342,8 +596,8 @@ export default function InsuranceQuoteTool() {
             {quotes.length === 0 ? (
               <Card>
                 <CardContent className="pt-6 text-center text-slate-500">
-                  <p className="text-lg">No quotes collected yet.</p>
-                  <p className="text-sm mt-1">Use the call script tab to start calling, then add quotes here as you get them.</p>
+                  <p className="text-lg">No actual quotes entered yet.</p>
+                  <p className="text-sm mt-1">The Compare tab shows estimates. Add real quotes here as you get them — they&apos;ll replace the estimates automatically.</p>
                 </CardContent>
               </Card>
             ) : (
@@ -354,15 +608,15 @@ export default function InsuranceQuoteTool() {
                     const bNum = parseFloat(b.monthlyPremium.replace(/[^0-9.]/g, ""))
                     return aNum - bNum
                   })
-                  .map((quote) => (
-                    <Card key={quote.id} className={quote.id === bestQuote?.id ? "border-green-300 dark:border-green-700" : ""}>
+                  .map((quote, idx) => (
+                    <Card key={quote.id} className={idx === 0 ? "border-green-300 dark:border-green-700" : ""}>
                       <CardContent className="pt-6">
                         <div className="flex items-start justify-between">
                           <div className="space-y-1">
                             <div className="flex items-center gap-2">
                               <span className="text-lg font-semibold">{quote.insurer}</span>
-                              {quote.id === bestQuote?.id && (
-                                <Badge className="bg-green-600 text-white">Best Price</Badge>
+                              {idx === 0 && quotes.length > 1 && (
+                                <Badge className="bg-green-600 text-white">Best Actual Quote</Badge>
                               )}
                               {quote.rating && <Badge variant="outline">{quote.rating}</Badge>}
                             </div>
@@ -388,56 +642,6 @@ export default function InsuranceQuoteTool() {
                       </CardContent>
                     </Card>
                   ))}
-
-                <Card className="bg-slate-50 dark:bg-slate-800">
-                  <CardContent className="pt-6">
-                    <h3 className="font-semibold mb-2">Comparison Summary</h3>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left py-2 pr-4">Insurer</th>
-                            <th className="text-left py-2 pr-4">Monthly</th>
-                            <th className="text-left py-2 pr-4">Annual</th>
-                            <th className="text-left py-2 pr-4">vs Progressive</th>
-                            <th className="text-left py-2">Coverage</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr className="border-b text-slate-400">
-                            <td className="py-2 pr-4">Progressive (current)</td>
-                            <td className="py-2 pr-4">$100</td>
-                            <td className="py-2 pr-4">$1,200</td>
-                            <td className="py-2 pr-4">—</td>
-                            <td className="py-2">Liability</td>
-                          </tr>
-                          {quotes
-                            .sort((a, b) => {
-                              const aNum = parseFloat(a.monthlyPremium.replace(/[^0-9.]/g, ""))
-                              const bNum = parseFloat(b.monthlyPremium.replace(/[^0-9.]/g, ""))
-                              return aNum - bNum
-                            })
-                            .map((q) => {
-                              const monthly = parseFloat(q.monthlyPremium.replace(/[^0-9.]/g, ""))
-                              const annual = monthly * 12
-                              const savings = (100 - monthly) * 12
-                              return (
-                                <tr key={q.id} className="border-b">
-                                  <td className="py-2 pr-4 font-medium">{q.insurer}</td>
-                                  <td className="py-2 pr-4">${monthly.toFixed(0)}</td>
-                                  <td className="py-2 pr-4">${annual.toFixed(0)}</td>
-                                  <td className={`py-2 pr-4 font-medium ${savings > 0 ? "text-green-600" : "text-red-600"}`}>
-                                    {savings > 0 ? `Save $${savings.toFixed(0)}/yr` : `+$${Math.abs(savings).toFixed(0)}/yr`}
-                                  </td>
-                                  <td className="py-2">{q.coverageType}</td>
-                                </tr>
-                              )
-                            })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </CardContent>
-                </Card>
               </div>
             )}
           </TabsContent>
@@ -586,36 +790,99 @@ export default function InsuranceQuoteTool() {
                 </div>
               </CardContent>
             </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Timeline</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3 text-sm">
-                  <TimelineItem
-                    step="Week 1"
-                    action="Call GEICO and get an online quote. Call a local State Farm agent."
-                  />
-                  <TimelineItem
-                    step="Week 1-2"
-                    action="Call Travelers and Kansas Farm Bureau local agents."
-                  />
-                  <TimelineItem
-                    step="Week 2"
-                    action="Compare all quotes. Call back lowest competitors to see if others can beat them."
-                  />
-                  <TimelineItem
-                    step="Week 2-3"
-                    action="Choose the best option. Start new policy, THEN cancel Progressive."
-                  />
-                </div>
-              </CardContent>
-            </Card>
           </TabsContent>
         </Tabs>
       </div>
     </div>
+  )
+}
+
+function SelectedInsurerDetail({
+  estimate,
+  actualQuote,
+  currentMonthly,
+}: {
+  estimate: InsurerEstimate
+  actualQuote: Quote | null
+  currentMonthly: number
+}) {
+  const monthly = actualQuote
+    ? parseFloat(actualQuote.monthlyPremium.replace(/[^0-9.]/g, ""))
+    : estimate.estimatedMonthly
+
+  return (
+    <Card className="border-blue-200 dark:border-blue-800">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg">{estimate.name}</CardTitle>
+          <div className="text-right">
+            <p className="text-2xl font-bold">${monthly}/mo</p>
+            <p className="text-sm text-green-600">Save ${currentMonthly - monthly}/mo vs Progressive</p>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <h4 className="font-semibold text-sm text-green-700 dark:text-green-400 mb-2">Pros</h4>
+            <ul className="space-y-1">
+              {estimate.pros.map((pro) => (
+                <li key={pro} className="text-sm flex items-start gap-2">
+                  <span className="text-green-600 mt-0.5">+</span>
+                  <span>{pro}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h4 className="font-semibold text-sm text-red-700 dark:text-red-400 mb-2">Cons</h4>
+            <ul className="space-y-1">
+              {estimate.cons.map((con) => (
+                <li key={con} className="text-sm flex items-start gap-2">
+                  <span className="text-red-600 mt-0.5">-</span>
+                  <span>{con}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        <div className="border-t pt-3">
+          <h4 className="font-semibold text-sm mb-2">Available Discounts</h4>
+          <div className="flex flex-wrap gap-2">
+            {estimate.availableDiscounts.map((d) => (
+              <Badge key={d} variant="secondary" className="text-xs">{d}</Badge>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+          <h4 className="font-semibold text-sm mb-1">How to Get This Quote</h4>
+          <p className="text-sm text-slate-600 dark:text-slate-400">{estimate.howToGet}</p>
+          <p className="text-sm text-slate-500 mt-2">Phone: {estimate.phone}</p>
+        </div>
+
+        {actualQuote && (
+          <div className="bg-green-50 dark:bg-green-950/50 border border-green-200 dark:border-green-800 rounded-lg p-4">
+            <h4 className="font-semibold text-sm mb-1">Your Actual Quote</h4>
+            <p className="text-sm">${actualQuote.monthlyPremium}/mo — {actualQuote.coverageType}</p>
+            {actualQuote.agentName && <p className="text-sm text-slate-500">Agent: {actualQuote.agentName} {actualQuote.agentPhone && `(${actualQuote.agentPhone})`}</p>}
+            {actualQuote.notes && <p className="text-sm text-slate-500 mt-1">{actualQuote.notes}</p>}
+          </div>
+        )}
+
+        <div className="border-t pt-3">
+          <h4 className="font-semibold text-sm mb-2">If You Choose {estimate.name} — Next Steps</h4>
+          <ol className="space-y-1 text-sm text-slate-600 dark:text-slate-400 list-decimal pl-4">
+            <li>Call {estimate.name} and confirm the quote / finalize the policy details</li>
+            <li>Ask for the policy start date — set it for the day you want to switch</li>
+            <li>Once the new policy is confirmed and active, call Progressive to cancel</li>
+            <li>Ask Progressive for a prorated refund on any remaining premium</li>
+            <li>Keep proof of the new policy in the van</li>
+          </ol>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -673,11 +940,16 @@ function TipBlock({ number, title, text }: { number: number; title: string; text
   )
 }
 
-function TimelineItem({ step, action }: { step: string; action: string }) {
+function RecommendationStep({ number, title, text }: { number: number; title: string; text: string }) {
   return (
-    <div className="flex gap-3 items-start">
-      <Badge variant="outline" className="flex-shrink-0 text-xs">{step}</Badge>
-      <p className="text-slate-700 dark:text-slate-300">{action}</p>
+    <div className="flex gap-3">
+      <span className="flex-shrink-0 w-7 h-7 rounded-full bg-green-200 dark:bg-green-800 text-green-800 dark:text-green-200 flex items-center justify-center text-sm font-bold">
+        {number}
+      </span>
+      <div>
+        <p className="font-semibold text-sm text-slate-800 dark:text-slate-200">{title}</p>
+        <p className="text-slate-600 dark:text-slate-400 text-xs">{text}</p>
+      </div>
     </div>
   )
 }
